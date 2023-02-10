@@ -21,11 +21,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 # Lights HAL
 PRODUCT_PACKAGES += \
-    android.hardware.lights-service.pinephone \
-
-# Vibrator HAL
-PRODUCT_PACKAGES += \
-    android.hardware.vibrator-service.pinephone \
+    android.hardware.lights-service.pinephonepro \
 
 # Sensors HAL
 PRODUCT_PACKAGES += \
@@ -43,10 +39,10 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.iio.magn.quirks=no-trig,no-event                \
 
 PRODUCT_COPY_FILES += \
-    device/glodroid/pinephone/modem.pinephone.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/modem.pinephonepro.rc \
+    $(LOCAL_PATH)/etc/modem.pinephonepro.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/modem.pinephonepro.rc \
 
 PRODUCT_COPY_FILES += \
-    device/glodroid/pinephonepro/audio.pinephonepro.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio.pinephonepro.xml \
+    $(LOCAL_PATH)/etc/audio.pinephonepro.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio.pinephonepro.xml \
 
 # Camera IPAs
 PRODUCT_PACKAGES += ipa_rkisp1 ipa_rkisp1.so.sign
