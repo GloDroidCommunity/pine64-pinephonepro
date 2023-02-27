@@ -19,8 +19,8 @@ TARGET_2ND_CPU_ABI2 := armeabi
 TARGET_2ND_CPU_VARIANT := cortex-a15
 
 PRODUCT_BOARD_PLATFORM := rockchip
-PRODUCT_NAME := pinephonepro
-PRODUCT_DEVICE := pine64-pinephonepro
+PRODUCT_NAME := pine64_pinephonepro
+PRODUCT_DEVICE := pine64_pinephonepro
 PRODUCT_BRAND := Pine64
 PRODUCT_MODEL := PinePhonePro
 PRODUCT_MANUFACTURER := Pine64

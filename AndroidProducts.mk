@@ -4,7 +4,7 @@
 # Copyright (C) 2020 Roman Stratiienko (r.stratiienko@gmail.com)
 
 PRODUCT_MAKEFILES := \
-    $(LOCAL_DIR)/pinephonepro.mk
+    $(LOCAL_DIR)/pine64_pinephonepro.mk
 
 COMMON_LUNCH_CHOICES := \
-    pinephonepro-userdebug
+    pine64_pinephonepro-userdebug
