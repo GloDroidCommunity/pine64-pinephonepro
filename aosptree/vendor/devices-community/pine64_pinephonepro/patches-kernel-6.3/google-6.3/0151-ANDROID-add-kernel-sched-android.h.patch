@@ -1,0 +1,74 @@
+From 5be4bb07d7fb8e8cfffb0143ccd561286d2659e8 Mon Sep 17 00:00:00 2001
+From: Greg Kroah-Hartman <gregkh@google.com>
+Date: Fri, 1 Apr 2022 16:58:07 +0200
+Subject: [PATCH] ANDROID: add kernel/sched/android.h
+
+Create a place for the android-specific scheduler addons to live so that
+merges can happen easier and we have a better view of the technical debt
+that is being drug along with the kernel updates.
+
+Start it off with replacing an empty copy of task_may_not_preempt() to
+solve the build problem for some devices where they are relying on this
+function to be present in the system.
+
+Fixes: 65c99af98ba6 ("Revert "ANDROID: sched: avoid placing RT threads on cores handling softirqs"")
+Cc: Quentin Perret <qperret@google.com>
+Cc: Will McVicker <willmcvicker@google.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@google.com>
+Change-Id: I4fd94fab3397b3a197b79b2ae27e9490b54cad59
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ kernel/sched/android.h | 27 +++++++++++++++++++++++++++
+ kernel/sched/sched.h   |  2 ++
+ 2 files changed, 29 insertions(+)
+ create mode 100644 kernel/sched/android.h
+
+diff --git a/kernel/sched/android.h b/kernel/sched/android.h
+new file mode 100644
+index 000000000000..5fe6bb772368
+--- /dev/null
++++ b/kernel/sched/android.h
+@@ -0,0 +1,27 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Android scheduler hooks and modifications
++ *
++ * Put all of the android-specific scheduler hooks and changes
++ * in this .h file to make merges and modifications easier.  It's also
++ * simpler to notice what is, and is not, an upstream change this way over time.
++ */
++
++
++/*
++ * task_may_not_preempt - check whether a task may not be preemptible soon
++ */
++static inline bool task_may_not_preempt(struct task_struct *task, int cpu)
++{
++	return false;
++}
++
++static inline bool uclamp_boosted(struct task_struct *p)
++{
++	return false;
++}
++
++static inline bool uclamp_latency_sensitive(struct task_struct *p)
++{
++	return false;
++}
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index fcb0b4b51cc8..5fa7007f97fc 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -68,6 +68,8 @@
+ #include <linux/wait_api.h>
+ #include <linux/wait_bit.h>
+ #include <linux/workqueue_api.h>
++#include <linux/android_vendor.h>
++#include "android.h"
+ 
+ #include <trace/events/power.h>
+ #include <trace/events/sched.h>
+-- 
+2.34.1
+

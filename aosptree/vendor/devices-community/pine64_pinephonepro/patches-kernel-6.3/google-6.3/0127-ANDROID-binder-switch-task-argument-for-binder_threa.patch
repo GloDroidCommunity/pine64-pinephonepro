@@ -1,0 +1,123 @@
+From 4504adfa1b5ba9fdddc5658b40e951ccbd45efe0 Mon Sep 17 00:00:00 2001
+From: Carlos Llamas <cmllamas@google.com>
+Date: Mon, 6 Jun 2022 20:49:40 +0000
+Subject: [PATCH] ANDROID: binder: switch task argument for binder_thread
+
+Refactor binder priority functions to take in 'struct binder_thread *'
+instead of just 'struct task_struct *'. This allows access to other
+thread fields used in subsequent patches. In any case, the same task
+reference is still available under thread->task.
+
+There is no functional impact from this patch.
+
+Bug: 148101660
+Signed-off-by: Carlos Llamas <cmllamas@google.com>
+Change-Id: I67b599884580d957d776500e467827e5035c99f6
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/android/binder.c | 26 ++++++++++++++------------
+ 1 file changed, 14 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/android/binder.c b/drivers/android/binder.c
+index 0129ff3c5eb5..41f64de132b3 100644
+--- a/drivers/android/binder.c
++++ b/drivers/android/binder.c
+@@ -695,10 +695,11 @@ static int to_kernel_prio(int policy, int user_priority)
+ 		return MAX_RT_PRIO - 1 - user_priority;
+ }
+ 
+-static void binder_do_set_priority(struct task_struct *task,
++static void binder_do_set_priority(struct binder_thread *thread,
+ 				   const struct binder_priority *desired,
+ 				   bool verify)
+ {
++	struct task_struct *task = thread->task;
+ 	int priority; /* user-space prio value */
+ 	bool has_cap_nice;
+ 	unsigned int policy = desired->sched_policy;
+@@ -758,22 +759,23 @@ static void binder_do_set_priority(struct task_struct *task,
+ 		set_user_nice(task, priority);
+ }
+ 
+-static void binder_set_priority(struct task_struct *task,
++static void binder_set_priority(struct binder_thread *thread,
+ 				const struct binder_priority *desired)
+ {
+-	binder_do_set_priority(task, desired, /* verify = */ true);
++	binder_do_set_priority(thread, desired, /* verify = */ true);
+ }
+ 
+-static void binder_restore_priority(struct task_struct *task,
++static void binder_restore_priority(struct binder_thread *thread,
+ 				    const struct binder_priority *desired)
+ {
+-	binder_do_set_priority(task, desired, /* verify = */ false);
++	binder_do_set_priority(thread, desired, /* verify = */ false);
+ }
+ 
+-static void binder_transaction_priority(struct task_struct *task,
++static void binder_transaction_priority(struct binder_thread *thread,
+ 					struct binder_transaction *t,
+ 					struct binder_node *node)
+ {
++	struct task_struct *task = thread->task;
+ 	struct binder_priority desired = t->priority;
+ 	const struct binder_priority node_prio = {
+ 		.sched_policy = node->sched_policy,
+@@ -805,7 +807,7 @@ static void binder_transaction_priority(struct task_struct *task,
+ 		desired = node_prio;
+ 	}
+ 
+-	binder_set_priority(task, &desired);
++	binder_set_priority(thread, &desired);
+ }
+ 
+ static struct binder_node *binder_get_node_ilocked(struct binder_proc *proc,
+@@ -2904,7 +2906,7 @@ static int binder_proc_transaction(struct binder_transaction *t,
+ 		thread = binder_select_thread_ilocked(proc);
+ 
+ 	if (thread) {
+-		binder_transaction_priority(thread->task, t, node);
++		binder_transaction_priority(thread, t, node);
+ 		binder_enqueue_thread_work_ilocked(thread, &t->work);
+ 	} else if (!pending_async) {
+ 		binder_enqueue_work_ilocked(&t->work, &proc->todo);
+@@ -3729,7 +3731,7 @@ static void binder_transaction(struct binder_proc *proc,
+ 		target_proc->outstanding_txns++;
+ 		binder_inner_proc_unlock(target_proc);
+ 		wake_up_interruptible_sync(&target_thread->wait);
+-		binder_restore_priority(current, &in_reply_to->saved_priority);
++		binder_restore_priority(thread, &in_reply_to->saved_priority);
+ 		binder_free_transaction(in_reply_to);
+ 	} else if (!(t->flags & TF_ONE_WAY)) {
+ 		BUG_ON(t->buffer->async_transaction != 0);
+@@ -3860,7 +3862,7 @@ static void binder_transaction(struct binder_proc *proc,
+ 
+ 	BUG_ON(thread->return_error.cmd != BR_OK);
+ 	if (in_reply_to) {
+-		binder_restore_priority(current, &in_reply_to->saved_priority);
++		binder_restore_priority(thread, &in_reply_to->saved_priority);
+ 		binder_set_txn_from_error(in_reply_to, t_debug_id,
+ 				return_error, return_error_param);
+ 		thread->return_error.cmd = BR_TRANSACTION_COMPLETE;
+@@ -4531,7 +4533,7 @@ static int binder_thread_read(struct binder_proc *proc,
+ 			wait_event_interruptible(binder_user_error_wait,
+ 						 binder_stop_on_user_error < 2);
+ 		}
+-		binder_restore_priority(current, &proc->default_priority);
++		binder_restore_priority(thread, &proc->default_priority);
+ 	}
+ 
+ 	if (non_block) {
+@@ -4764,7 +4766,7 @@ static int binder_thread_read(struct binder_proc *proc,
+ 
+ 			trd->target.ptr = target_node->ptr;
+ 			trd->cookie =  target_node->cookie;
+-			binder_transaction_priority(current, t, target_node);
++			binder_transaction_priority(thread, t, target_node);
+ 			cmd = BR_TRANSACTION;
+ 		} else {
+ 			trd->target.ptr = 0;
+-- 
+2.34.1
+

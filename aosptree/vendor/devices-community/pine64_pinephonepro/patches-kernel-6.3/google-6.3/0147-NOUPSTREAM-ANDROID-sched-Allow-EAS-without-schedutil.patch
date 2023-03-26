@@ -1,0 +1,161 @@
+From b3a0be4751ca6c9c93c40c211bc1ef428f90dace Mon Sep 17 00:00:00 2001
+From: Quentin Perret <qperret@google.com>
+Date: Fri, 5 Jun 2020 09:06:50 +0100
+Subject: [PATCH] NOUPSTREAM: ANDROID: sched: Allow EAS without schedutil
+
+This effectively reverts 531b5c9f5cd0 ("sched/topology: Make Energy
+Aware Scheduling depend on schedutil"), and updates the documentation
+accordingly.
+
+In the context of GKI 2.0, some partners need to use a custom cpufreq
+govenor, but would like to keep EAS enabled.
+
+Remove the hard dependency between them.
+
+[CPNOTE: 30/06/21] Lee: Attempt was made to upstream - it was NACKed
+
+Bug: 157580690
+Bug: 120440300
+Link: https://lore.kernel.org/lkml/20200507181012.29791-1-qperret@google.com/
+Signed-off-by: Quentin Perret <qperret@google.com>
+Change-Id: Ied1c5aba6b692e26776b3e2c050780a67cc5bae1
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ Documentation/scheduler/sched-energy.rst |  2 +-
+ drivers/cpufreq/cpufreq.c                |  1 -
+ include/linux/cpufreq.h                  |  8 --------
+ kernel/sched/cpufreq_schedutil.c         | 26 ------------------------
+ kernel/sched/topology.c                  | 19 +----------------
+ 5 files changed, 2 insertions(+), 54 deletions(-)
+
+diff --git a/Documentation/scheduler/sched-energy.rst b/Documentation/scheduler/sched-energy.rst
+index 8fbce5e767d9..83f11798617c 100644
+--- a/Documentation/scheduler/sched-energy.rst
++++ b/Documentation/scheduler/sched-energy.rst
+@@ -402,7 +402,7 @@ Consequently, the only sane governor to use together with EAS is schedutil,
+ because it is the only one providing some degree of consistency between
+ frequency requests and energy predictions.
+ 
+-Using EAS with any other governor than schedutil is not supported.
++Using EAS with any other governor than schedutil is not recommended.
+ 
+ 
+ 6.5 Scale-invariant utilization signals
+diff --git a/drivers/cpufreq/cpufreq.c b/drivers/cpufreq/cpufreq.c
+index 6d8fd3b8dcb5..58f6c1a02223 100644
+--- a/drivers/cpufreq/cpufreq.c
++++ b/drivers/cpufreq/cpufreq.c
+@@ -2604,7 +2604,6 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
+ 		ret = cpufreq_start_governor(policy);
+ 		if (!ret) {
+ 			pr_debug("governor change\n");
+-			sched_cpufreq_governor_change(policy, old_gov);
+ 			return 0;
+ 		}
+ 		cpufreq_exit_governor(policy);
+diff --git a/include/linux/cpufreq.h b/include/linux/cpufreq.h
+index 65623233ab2f..7bb71c81ceda 100644
+--- a/include/linux/cpufreq.h
++++ b/include/linux/cpufreq.h
+@@ -1195,14 +1195,6 @@ static inline int of_perf_domain_get_sharing_cpumask(int pcpu, const char *list_
+ }
+ #endif
+ 
+-#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
+-void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
+-			struct cpufreq_governor *old_gov);
+-#else
+-static inline void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
+-			struct cpufreq_governor *old_gov) { }
+-#endif
+-
+ extern unsigned int arch_freq_get_on_cpu(int cpu);
+ 
+ #ifndef arch_set_freq_scale
+diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
+index e3211455b203..2737f4914c2e 100644
+--- a/kernel/sched/cpufreq_schedutil.c
++++ b/kernel/sched/cpufreq_schedutil.c
+@@ -837,29 +837,3 @@ struct cpufreq_governor *cpufreq_default_governor(void)
+ #endif
+ 
+ cpufreq_governor_init(schedutil_gov);
+-
+-#ifdef CONFIG_ENERGY_MODEL
+-static void rebuild_sd_workfn(struct work_struct *work)
+-{
+-	rebuild_sched_domains_energy();
+-}
+-static DECLARE_WORK(rebuild_sd_work, rebuild_sd_workfn);
+-
+-/*
+- * EAS shouldn't be attempted without sugov, so rebuild the sched_domains
+- * on governor changes to make sure the scheduler knows about it.
+- */
+-void sched_cpufreq_governor_change(struct cpufreq_policy *policy,
+-				  struct cpufreq_governor *old_gov)
+-{
+-	if (old_gov == &schedutil_gov || policy->governor == &schedutil_gov) {
+-		/*
+-		 * When called from the cpufreq_register_driver() path, the
+-		 * cpu_hotplug_lock is already held, so use a work item to
+-		 * avoid nested locking in rebuild_sched_domains().
+-		 */
+-		schedule_work(&rebuild_sd_work);
+-	}
+-
+-}
+-#endif
+diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
+index 051aaf65c749..3ca102b7b405 100644
+--- a/kernel/sched/topology.c
++++ b/kernel/sched/topology.c
+@@ -349,8 +349,7 @@ static void sched_energy_set(bool has_eas)
+  *    2. the SD_ASYM_CPUCAPACITY flag is set in the sched_domain hierarchy.
+  *    3. no SMT is detected.
+  *    4. the EM complexity is low enough to keep scheduling overheads low;
+- *    5. schedutil is driving the frequency of all CPUs of the rd;
+- *    6. frequency invariance support is present;
++ *    5. frequency invariance support is present;
+  *
+  * The complexity of the Energy Model is defined as:
+  *
+@@ -370,15 +369,12 @@ static void sched_energy_set(bool has_eas)
+  */
+ #define EM_MAX_COMPLEXITY 2048
+ 
+-extern struct cpufreq_governor schedutil_gov;
+ static bool build_perf_domains(const struct cpumask *cpu_map)
+ {
+ 	int i, nr_pd = 0, nr_ps = 0, nr_cpus = cpumask_weight(cpu_map);
+ 	struct perf_domain *pd = NULL, *tmp;
+ 	int cpu = cpumask_first(cpu_map);
+ 	struct root_domain *rd = cpu_rq(cpu)->rd;
+-	struct cpufreq_policy *policy;
+-	struct cpufreq_governor *gov;
+ 
+ 	if (!sysctl_sched_energy_aware)
+ 		goto free;
+@@ -412,19 +408,6 @@ static bool build_perf_domains(const struct cpumask *cpu_map)
+ 		if (find_pd(pd, i))
+ 			continue;
+ 
+-		/* Do not attempt EAS if schedutil is not being used. */
+-		policy = cpufreq_cpu_get(i);
+-		if (!policy)
+-			goto free;
+-		gov = policy->governor;
+-		cpufreq_cpu_put(policy);
+-		if (gov != &schedutil_gov) {
+-			if (rd->pd)
+-				pr_warn("rd %*pbl: Disabling EAS, schedutil is mandatory\n",
+-						cpumask_pr_args(cpu_map));
+-			goto free;
+-		}
+-
+ 		/* Create the new pd and add it to the local list. */
+ 		tmp = pd_init(i);
+ 		if (!tmp)
+-- 
+2.34.1
+

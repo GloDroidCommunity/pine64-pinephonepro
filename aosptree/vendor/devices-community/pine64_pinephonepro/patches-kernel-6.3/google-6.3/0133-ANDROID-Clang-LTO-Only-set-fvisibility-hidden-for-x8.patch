@@ -1,0 +1,40 @@
+From 08b9e1f2fec1a82aef56131904e468f8e0f82c40 Mon Sep 17 00:00:00 2001
+From: Giuliano Procida <gprocida@google.com>
+Date: Fri, 12 Mar 2021 09:19:08 +0000
+Subject: [PATCH] ANDROID: Clang LTO: Only set -fvisibility=hidden for x86
+
+Otherwise this upsets ABI monitoring as symbols are hidden and as such
+do not get considered for ABI analysis.
+
+Bug: 182194803
+Bug: 203411090
+Fixes: dc5723b02e52 ("kbuild: add support for Clang LTO")
+Signed-off-by: Giuliano Procida <gprocida@google.com>
+Signed-off-by: Matthias Maennich <maennich@google.com>
+Change-Id: If6011ad739ecccd23a92cfa2f9fd43084f9a0b4f
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ Makefile | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/Makefile b/Makefile
+index 034f3371c0b2..523618f29ab7 100644
+--- a/Makefile
++++ b/Makefile
+@@ -979,7 +979,13 @@ KBUILD_LDFLAGS	+= --thinlto-cache-dir=$(extmod_prefix).thinlto-cache
+ else
+ CC_FLAGS_LTO	:= -flto
+ endif
++
++ifeq ($(SRCARCH),x86)
++# Workaround for compiler / linker bug
+ CC_FLAGS_LTO	+= -fvisibility=hidden
++else
++CC_FLAGS_LTO	+= -fvisibility=default
++endif
+ 
+ # Limit inlining across translation units to reduce binary size
+ KBUILD_LDFLAGS += -mllvm -import-instr-limit=5
+-- 
+2.34.1
+

@@ -1,0 +1,24 @@
+From 06fcae534cd29fa0db180b1e3c4cba838eed3ece Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 14:00:42 -0700
+Subject: [PATCH] _____ANNOTATION: scheduler changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: I35589b5d62458954d15b70d8e4151d66a2ab4437
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index 68dcf343ffb9..b7da5fba7022 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -3,3 +3,4 @@ binder changes
+ kbuild changes
+ core kernel changes
+ power management changes
++scheduler changes
+-- 
+2.34.1
+

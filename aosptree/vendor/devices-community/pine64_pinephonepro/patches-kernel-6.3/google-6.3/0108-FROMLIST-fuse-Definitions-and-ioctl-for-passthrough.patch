@@ -1,0 +1,284 @@
+From 8b5f78ebdabd9b2db9b2111a2c900ac0220b79c4 Mon Sep 17 00:00:00 2001
+From: Alessio Balsini <balsini@google.com>
+Date: Mon, 25 Jan 2021 17:02:28 +0000
+Subject: [PATCH] FROMLIST: fuse: Definitions and ioctl for passthrough
+
+Expose the FUSE_PASSTHROUGH interface to user space and declare all the
+basic data structures and functions as the skeleton on top of which the
+FUSE passthrough functionality will be built.
+
+As part of this, introduce the new FUSE passthrough ioctl, which allows
+the FUSE daemon to specify a direct connection between a FUSE file and a
+lower file system file. Such ioctl requires user space to pass the file
+descriptor of one of its opened files through the fuse_passthrough_out
+data structure introduced in this patch. This structure includes extra
+fields for possible future extensions.
+Also, add the passthrough functions for the set-up and tear-down of the
+data structures and locks that will be used both when fuse_conns and
+fuse_files are created/deleted.
+
+[CPNOTE: 20/05/21] Lee: Still fresh - hopefully this will land upstream soon
+
+Bug: 168023149
+Link: https://lore.kernel.org/lkml/20210125153057.3623715-4-balsini@android.com/
+Signed-off-by: Alessio Balsini <balsini@android.com>
+Change-Id: I732532581348adadda5b5048a9346c2b0868d539
+Signed-off-by: Alessio Balsini <balsini@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/fuse/Makefile          |  1 +
+ fs/fuse/dev.c             |  1 +
+ fs/fuse/dir.c             |  2 ++
+ fs/fuse/file.c            |  4 +++-
+ fs/fuse/fuse_i.h          | 27 +++++++++++++++++++++++++++
+ fs/fuse/inode.c           | 15 +++++++++++++++
+ fs/fuse/passthrough.c     | 21 +++++++++++++++++++++
+ include/uapi/linux/fuse.h | 10 +++++++++-
+ 8 files changed, 79 insertions(+), 2 deletions(-)
+ create mode 100644 fs/fuse/passthrough.c
+
+diff --git a/fs/fuse/Makefile b/fs/fuse/Makefile
+index 0c48b35c058d..d9e1b47382f3 100644
+--- a/fs/fuse/Makefile
++++ b/fs/fuse/Makefile
+@@ -8,6 +8,7 @@ obj-$(CONFIG_CUSE) += cuse.o
+ obj-$(CONFIG_VIRTIO_FS) += virtiofs.o
+ 
+ fuse-y := dev.o dir.o file.o inode.o control.o xattr.o acl.o readdir.o ioctl.o
++fuse-y += passthrough.o
+ fuse-$(CONFIG_FUSE_DAX) += dax.o
+ 
+ virtiofs-y := virtio_fs.o
+diff --git a/fs/fuse/dev.c b/fs/fuse/dev.c
+index 7fc086662e60..88f5c9ccfc71 100644
+--- a/fs/fuse/dev.c
++++ b/fs/fuse/dev.c
+@@ -2257,6 +2257,7 @@ static long fuse_dev_ioctl(struct file *file, unsigned int cmd,
+ 	int res;
+ 	int oldfd;
+ 	struct fuse_dev *fud = NULL;
++	struct fuse_passthrough_out pto;
+ 
+ 	switch (cmd) {
+ 	case FUSE_DEV_IOC_CLONE:
+diff --git a/fs/fuse/dir.c b/fs/fuse/dir.c
+index 35bc174f9ba2..dfc62b0cf5ad 100644
+--- a/fs/fuse/dir.c
++++ b/fs/fuse/dir.c
+@@ -619,6 +619,7 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
+ {
+ 	int err;
+ 	struct inode *inode;
++	struct fuse_conn *fc = get_fuse_conn(dir);
+ 	struct fuse_mount *fm = get_fuse_mount(dir);
+ 	FUSE_ARGS(args);
+ 	struct fuse_forget_link *forget;
+@@ -687,6 +688,7 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
+ 	ff->fh = outopen.fh;
+ 	ff->nodeid = outentry.nodeid;
+ 	ff->open_flags = outopen.open_flags;
++	fuse_passthrough_setup(fc, ff, &outopen);
+ 	inode = fuse_iget(dir->i_sb, outentry.nodeid, outentry.generation,
+ 			  &outentry.attr, entry_attr_timeout(&outentry), 0);
+ 	if (!inode) {
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+index de37a3a06a71..1dcc3a056f91 100644
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -148,7 +148,7 @@ struct fuse_file *fuse_file_open(struct fuse_mount *fm, u64 nodeid,
+ 		if (!err) {
+ 			ff->fh = outarg.fh;
+ 			ff->open_flags = outarg.open_flags;
+-
++			fuse_passthrough_setup(fc, ff, &outarg);
+ 		} else if (err != -ENOSYS) {
+ 			fuse_file_free(ff);
+ 			return ERR_PTR(err);
+@@ -310,6 +310,8 @@ void fuse_file_release(struct inode *inode, struct fuse_file *ff,
+ 	struct fuse_release_args *ra = ff->release_args;
+ 	int opcode = isdir ? FUSE_RELEASEDIR : FUSE_RELEASE;
+ 
++	fuse_passthrough_release(&ff->passthrough);
++
+ 	fuse_prepare_release(fi, ff, open_flags, opcode);
+ 
+ 	if (ff->flock) {
+diff --git a/fs/fuse/fuse_i.h b/fs/fuse/fuse_i.h
+index 9b7fc7d3c7f1..38cdee06f9ca 100644
+--- a/fs/fuse/fuse_i.h
++++ b/fs/fuse/fuse_i.h
+@@ -173,6 +173,14 @@ struct fuse_conn;
+ struct fuse_mount;
+ struct fuse_release_args;
+ 
++/**
++ * Reference to lower filesystem file for read/write operations handled in
++ * passthrough mode
++ */
++struct fuse_passthrough {
++	struct file *filp;
++};
++
+ /** FUSE specific file data */
+ struct fuse_file {
+ 	/** Fuse connection for this file */
+@@ -218,6 +226,9 @@ struct fuse_file {
+ 
+ 	} readdir;
+ 
++	/** Container for data related to the passthrough functionality */
++	struct fuse_passthrough passthrough;
++
+ 	/** RB node to be linked on fuse_conn->polled_files */
+ 	struct rb_node polled_node;
+ 
+@@ -777,6 +788,9 @@ struct fuse_conn {
+ 	/* Auto-mount submounts announced by the server */
+ 	unsigned int auto_submounts:1;
+ 
++	/** Passthrough mode for read/write IO */
++	unsigned int passthrough:1;
++
+ 	/* Propagate syncfs() to server */
+ 	unsigned int sync_fs:1;
+ 
+@@ -841,6 +855,12 @@ struct fuse_conn {
+ 
+ 	/* New writepages go into this bucket */
+ 	struct fuse_sync_bucket __rcu *curr_bucket;
++
++	/** IDR for passthrough requests */
++	struct idr passthrough_req;
++
++	/** Protects passthrough_req */
++	spinlock_t passthrough_req_lock;
+ };
+ 
+ /*
+@@ -1324,4 +1344,11 @@ struct fuse_file *fuse_file_open(struct fuse_mount *fm, u64 nodeid,
+ void fuse_file_release(struct inode *inode, struct fuse_file *ff,
+ 		       unsigned int open_flags, fl_owner_t id, bool isdir);
+ 
++/* passthrough.c */
++int fuse_passthrough_open(struct fuse_dev *fud,
++			  struct fuse_passthrough_out *pto);
++int fuse_passthrough_setup(struct fuse_conn *fc, struct fuse_file *ff,
++			   struct fuse_open_out *openarg);
++void fuse_passthrough_release(struct fuse_passthrough *passthrough);
++
+ #endif /* _FS_FUSE_I_H */
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+index d66070af145d..55b9af2a6a34 100644
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -832,6 +832,7 @@ void fuse_conn_init(struct fuse_conn *fc, struct fuse_mount *fm,
+ 	memset(fc, 0, sizeof(*fc));
+ 	spin_lock_init(&fc->lock);
+ 	spin_lock_init(&fc->bg_lock);
++	spin_lock_init(&fc->passthrough_req_lock);
+ 	init_rwsem(&fc->killsb);
+ 	refcount_set(&fc->count, 1);
+ 	atomic_set(&fc->dev_count, 1);
+@@ -840,6 +841,7 @@ void fuse_conn_init(struct fuse_conn *fc, struct fuse_mount *fm,
+ 	INIT_LIST_HEAD(&fc->bg_queue);
+ 	INIT_LIST_HEAD(&fc->entry);
+ 	INIT_LIST_HEAD(&fc->devices);
++	idr_init(&fc->passthrough_req);
+ 	atomic_set(&fc->num_waiting, 0);
+ 	fc->max_background = FUSE_DEFAULT_MAX_BACKGROUND;
+ 	fc->congestion_threshold = FUSE_DEFAULT_CONGESTION_THRESHOLD;
+@@ -1203,6 +1205,12 @@ static void process_init_reply(struct fuse_mount *fm, struct fuse_args *args,
+ 				fc->handle_killpriv_v2 = 1;
+ 				fm->sb->s_flags |= SB_NOSEC;
+ 			}
++			if (flags & FUSE_PASSTHROUGH) {
++				fc->passthrough = 1;
++				/* Prevent further stacking */
++				fm->sb->s_stack_depth =
++					FILESYSTEM_MAX_STACK_DEPTH;
++			}
+ 			if (flags & FUSE_SETXATTR_EXT)
+ 				fc->setxattr_ext = 1;
+ 			if (flags & FUSE_SECURITY_CTX)
+@@ -1287,9 +1295,16 @@ void fuse_send_init(struct fuse_mount *fm)
+ }
+ EXPORT_SYMBOL_GPL(fuse_send_init);
+ 
++static int free_fuse_passthrough(int id, void *p, void *data)
++{
++	return 0;
++}
++
+ void fuse_free_conn(struct fuse_conn *fc)
+ {
+ 	WARN_ON(!list_empty(&fc->devices));
++	idr_for_each(&fc->passthrough_req, free_fuse_passthrough, NULL);
++	idr_destroy(&fc->passthrough_req);
+ 	kfree_rcu(fc, rcu);
+ }
+ EXPORT_SYMBOL_GPL(fuse_free_conn);
+diff --git a/fs/fuse/passthrough.c b/fs/fuse/passthrough.c
+new file mode 100644
+index 000000000000..594060c654f8
+--- /dev/null
++++ b/fs/fuse/passthrough.c
+@@ -0,0 +1,21 @@
++// SPDX-License-Identifier: GPL-2.0
++
++#include "fuse_i.h"
++
++#include <linux/fuse.h>
++
++int fuse_passthrough_open(struct fuse_dev *fud,
++			  struct fuse_passthrough_out *pto)
++{
++	return -EINVAL;
++}
++
++int fuse_passthrough_setup(struct fuse_conn *fc, struct fuse_file *ff,
++			   struct fuse_open_out *openarg)
++{
++	return -EINVAL;
++}
++
++void fuse_passthrough_release(struct fuse_passthrough *passthrough)
++{
++}
+diff --git a/include/uapi/linux/fuse.h b/include/uapi/linux/fuse.h
+index 1b9d0dfae72d..29c1eaf85b17 100644
+--- a/include/uapi/linux/fuse.h
++++ b/include/uapi/linux/fuse.h
+@@ -698,7 +698,7 @@ struct fuse_create_in {
+ struct fuse_open_out {
+ 	uint64_t	fh;
+ 	uint32_t	open_flags;
+-	uint32_t	padding;
++	uint32_t	passthrough_fh;
+ };
+ 
+ struct fuse_release_in {
+@@ -909,6 +909,13 @@ struct fuse_in_header {
+ 	uint16_t	padding;
+ };
+ 
++struct fuse_passthrough_out {
++	uint32_t	fd;
++	/* For future implementation */
++	uint32_t	len;
++	void		*vec;
++};
++
+ struct fuse_out_header {
+ 	uint32_t	len;
+ 	int32_t		error;
+@@ -989,6 +996,7 @@ struct fuse_notify_retrieve_in {
+ /* Device ioctls: */
+ #define FUSE_DEV_IOC_MAGIC		229
+ #define FUSE_DEV_IOC_CLONE		_IOR(FUSE_DEV_IOC_MAGIC, 0, uint32_t)
++#define FUSE_DEV_IOC_PASSTHROUGH_OPEN	_IOW(FUSE_DEV_IOC_MAGIC, 1, struct fuse_passthrough_out)
+ 
+ struct fuse_lseek_in {
+ 	uint64_t	fh;
+-- 
+2.34.1
+

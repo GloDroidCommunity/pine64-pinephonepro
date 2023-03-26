@@ -1,0 +1,50 @@
+From 834b89871e0b3a30c03eac8b96c9323c3b92d272 Mon Sep 17 00:00:00 2001
+From: Alessio Balsini <balsini@google.com>
+Date: Thu, 28 Jan 2021 19:48:23 +0000
+Subject: [PATCH] FROMLIST: fuse: Allocate unlikely used ioctl number for
+ passthrough V1
+
+The current UAPI interface for FUSE passthrough is still under
+discussion upstream, thus we are reserving this ioctl number to avoid
+future conflicts with user space binaries.
+The user space implementation in Android will take care of doing all the
+checking to fall into the most appropriate ioctl number.
+
+[CPNOTE: 21/05/21] Lee: Still fresh - hopefully this will land upstream soon
+
+Bug: 167695973
+Link: https://lore.kernel.org/lkml/20210125153057.3623715-3-balsini@android.com/
+Fixes: abbb00d5ae3f ("FROMLIST: fuse: Definitions and ioctl for passthrough")
+Test: manual test with additional printks
+Signed-off-by: Alessio Balsini <balsini@google.com>
+Change-Id: I658c5ab2ebfe2b76d20685a099ac1b1fee3549cc
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/uapi/linux/fuse.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/include/uapi/linux/fuse.h b/include/uapi/linux/fuse.h
+index 29c1eaf85b17..6c1ed03de5e2 100644
+--- a/include/uapi/linux/fuse.h
++++ b/include/uapi/linux/fuse.h
+@@ -909,6 +909,7 @@ struct fuse_in_header {
+ 	uint16_t	padding;
+ };
+ 
++/* fuse_passthrough_out for passthrough V1 */
+ struct fuse_passthrough_out {
+ 	uint32_t	fd;
+ 	/* For future implementation */
+@@ -996,7 +997,8 @@ struct fuse_notify_retrieve_in {
+ /* Device ioctls: */
+ #define FUSE_DEV_IOC_MAGIC		229
+ #define FUSE_DEV_IOC_CLONE		_IOR(FUSE_DEV_IOC_MAGIC, 0, uint32_t)
+-#define FUSE_DEV_IOC_PASSTHROUGH_OPEN	_IOW(FUSE_DEV_IOC_MAGIC, 1, struct fuse_passthrough_out)
++/* 127 is reserved for the V1 interface implementation in Android */
++#define FUSE_DEV_IOC_PASSTHROUGH_OPEN	_IOW(FUSE_DEV_IOC_MAGIC, 127, struct fuse_passthrough_out)
+ 
+ struct fuse_lseek_in {
+ 	uint64_t	fh;
+-- 
+2.34.1
+

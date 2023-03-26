@@ -1,0 +1,101 @@
+From f5d0ca3b8baf46f77da4a59caccac2e1d6e3c1ea Mon Sep 17 00:00:00 2001
+From: Alessio Balsini <balsini@google.com>
+Date: Mon, 25 Jan 2021 16:58:50 +0000
+Subject: [PATCH] FROMLIST: fs: Generic function to convert iocb to rw flags
+
+OverlayFS implements its own function to translate iocb flags into rw
+flags, so that they can be passed into another vfs call.
+With commit ce71bfea207b4 ("fs: align IOCB_* flags with RWF_* flags")
+Jens created a 1:1 matching between the iocb flags and rw flags,
+simplifying the conversion.
+
+Reduce the OverlayFS code by making the flag conversion function generic
+and reusable.
+
+[CPNOTE: 20/05/21] Lee: Still fresh - hopefully this will land upstream soon
+
+Bug: 168023149
+Link: https://lore.kernel.org/lkml/20210125153057.3623715-2-balsini@android.com/
+Signed-off-by: Alessio Balsini <balsini@android.com>
+Change-Id: I74aefeafd6ebbda2fbabee9024474dfe4cc6c2a7
+Signed-off-by: Alessio Balsini <balsini@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/overlayfs/file.c | 23 +++++------------------
+ include/linux/fs.h  |  5 +++++
+ 2 files changed, 10 insertions(+), 18 deletions(-)
+
+diff --git a/fs/overlayfs/file.c b/fs/overlayfs/file.c
+index 7c04f033aadd..759893e4da04 100644
+--- a/fs/overlayfs/file.c
++++ b/fs/overlayfs/file.c
+@@ -15,6 +15,8 @@
+ #include <linux/fs.h>
+ #include "overlayfs.h"
+ 
++#define OVL_IOCB_MASK (IOCB_DSYNC | IOCB_HIPRI | IOCB_NOWAIT | IOCB_SYNC)
++
+ struct ovl_aio_req {
+ 	struct kiocb iocb;
+ 	refcount_t ref;
+@@ -241,22 +243,6 @@ static void ovl_file_accessed(struct file *file)
+ 	touch_atime(&file->f_path);
+ }
+ 
+-static rwf_t ovl_iocb_to_rwf(int ifl)
+-{
+-	rwf_t flags = 0;
+-
+-	if (ifl & IOCB_NOWAIT)
+-		flags |= RWF_NOWAIT;
+-	if (ifl & IOCB_HIPRI)
+-		flags |= RWF_HIPRI;
+-	if (ifl & IOCB_DSYNC)
+-		flags |= RWF_DSYNC;
+-	if (ifl & IOCB_SYNC)
+-		flags |= RWF_SYNC;
+-
+-	return flags;
+-}
+-
+ static inline void ovl_aio_put(struct ovl_aio_req *aio_req)
+ {
+ 	if (refcount_dec_and_test(&aio_req->ref)) {
+@@ -316,7 +302,8 @@ static ssize_t ovl_read_iter(struct kiocb *iocb, struct iov_iter *iter)
+ 	old_cred = ovl_override_creds(file_inode(file)->i_sb);
+ 	if (is_sync_kiocb(iocb)) {
+ 		ret = vfs_iter_read(real.file, iter, &iocb->ki_pos,
+-				    ovl_iocb_to_rwf(iocb->ki_flags));
++				    iocb_to_rw_flags(iocb->ki_flags,
++						     OVL_IOCB_MASK));
+ 	} else {
+ 		struct ovl_aio_req *aio_req;
+ 
+@@ -380,7 +367,7 @@ static ssize_t ovl_write_iter(struct kiocb *iocb, struct iov_iter *iter)
+ 	if (is_sync_kiocb(iocb)) {
+ 		file_start_write(real.file);
+ 		ret = vfs_iter_write(real.file, iter, &iocb->ki_pos,
+-				     ovl_iocb_to_rwf(ifl));
++				     iocb_to_rw_flags(ifl, OVL_IOCB_MASK));
+ 		file_end_write(real.file);
+ 		/* Update size */
+ 		ovl_copyattr(inode);
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+index c85916e9f7db..c849074f44b7 100644
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -3009,6 +3009,11 @@ static inline int kiocb_set_rw_flags(struct kiocb *ki, rwf_t flags)
+ 	return 0;
+ }
+ 
++static inline rwf_t iocb_to_rw_flags(int ifl, int iocb_mask)
++{
++	return ifl & iocb_mask;
++}
++
+ static inline ino_t parent_ino(struct dentry *dentry)
+ {
+ 	ino_t res;
+-- 
+2.34.1
+

@@ -1,0 +1,68 @@
+From 75d158b441e22e17e14599129eadc551d7549932 Mon Sep 17 00:00:00 2001
+From: Will McVicker <willmcvicker@google.com>
+Date: Tue, 14 Dec 2021 10:53:58 -0800
+Subject: [PATCH] FROMLIST: kbuild: install the modules.order for external
+ modules
+
+Add support to install the modules.order file for external modules
+during module_install in order to retain the Makefile ordering
+of external modules. This helps reduce the extra steps necessary to
+properly order loading of external modules when there are multiple
+kernel modules compiled within a given KBUILD_EXTMOD directory.
+
+To handle compiling multiple external modules within the same
+INSTALL_MOD_DIR, kbuild will append a suffix to the installed
+modules.order file defined like so:
+
+  echo ${KBUILD_EXTMOD} | sed 's:[./_]:_:g'
+
+Ex:
+  KBUILD_EXTMOD=/mnt/a.b/c-d/my_driver results in:
+  modules.order._mnt_a_b_c_d_my_driver
+
+The installed module.order.$(extmod_suffix) files can then be cat'd
+together to create a single modules.order file which would define the
+order to load all of the modules during boot.
+
+Link: https://lore.kernel.org/all/20211215172349.388497-1-willmcvicker@google.com/
+Bug: 210713925
+Signed-off-by: Will McVicker <willmcvicker@google.com>
+Change-Id: I3c23098d551ef17427436feee78bfddc9f9d36c6
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ scripts/Makefile.modinst | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/scripts/Makefile.modinst b/scripts/Makefile.modinst
+index ab0c5bd1a60f..a77d0a46dcf7 100644
+--- a/scripts/Makefile.modinst
++++ b/scripts/Makefile.modinst
+@@ -27,6 +27,10 @@ suffix-$(CONFIG_MODULE_COMPRESS_XZ)	:= .xz
+ suffix-$(CONFIG_MODULE_COMPRESS_ZSTD)	:= .zst
+ 
+ modules := $(patsubst $(extmod_prefix)%.o, $(dst)/%.ko$(suffix-y), $(modules))
++ifneq ($(KBUILD_EXTMOD),)
++extmod_suffix := $(shell echo "${KBUILD_EXTMOD}" | md5sum | cut -d " " -f 1)
++modules += $(dst)/modules.order.$(extmod_suffix)
++endif
+ 
+ __modinst: $(modules)
+ 	@:
+@@ -86,6 +90,14 @@ $(dst)/%.ko: $(extmod_prefix)%.ko FORCE
+ 	$(call cmd,strip)
+ 	$(call cmd,sign)
+ 
++ifneq ($(KBUILD_EXTMOD),)
++$(dst)/modules.order.$(extmod_suffix): $(MODORDER) FORCE
++	$(call cmd,install)
++	@sed -e "s:^$(KBUILD_EXTMOD):$(INSTALL_MOD_DIR):g" \
++	     -e 's:^\(.*\)\.o$$:\1.ko:' \
++	     -i $@
++endif
++
+ else
+ 
+ $(dst)/%.ko: FORCE
+-- 
+2.34.1
+

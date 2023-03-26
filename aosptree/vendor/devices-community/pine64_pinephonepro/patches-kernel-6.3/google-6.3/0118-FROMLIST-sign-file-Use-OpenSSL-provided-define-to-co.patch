@@ -1,0 +1,81 @@
+From 018d43e76768c521e9a93e36ef51b6c6addd63f8 Mon Sep 17 00:00:00 2001
+From: Lee Jones <lee.jones@linaro.org>
+Date: Tue, 5 Oct 2021 14:33:06 +0100
+Subject: [PATCH] FROMLIST: sign-file: Use OpenSSL provided define to compile
+ out deprecated APIs
+
+OpenSSL's ENGINE API is deprecated in OpenSSL v3.0.
+
+Use OPENSSL_NO_ENGINE to disallow its use and fall back on the BIO API.
+
+This is required for fully hermetic builds in android-kernel.
+
+Link: https://lore.kernel.org/lkml/20211005161833.1522737-1-lee.jones@linaro.org/
+Fixes: bce40b72a381b ("ANDROID: Disable hermetic toolchain for allmodconfig builds")
+Co-developed-by: Adam Langley <agl@google.com>
+Signed-off-by: Lee Jones <lee.jones@linaro.org>
+Change-Id: I5ecac477c274ef040934710fd4a042c133942e34
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ scripts/sign-file.c | 21 ++++++++++++---------
+ 1 file changed, 12 insertions(+), 9 deletions(-)
+
+diff --git a/scripts/sign-file.c b/scripts/sign-file.c
+index 598ef5465f82..cadbc2603c7a 100644
+--- a/scripts/sign-file.c
++++ b/scripts/sign-file.c
+@@ -99,6 +99,7 @@ static void display_openssl_errors(int l)
+ 	}
+ }
+ 
++#ifndef OPENSSL_NO_ENGINE
+ static void drain_openssl_errors(void)
+ {
+ 	const char *file;
+@@ -108,6 +109,7 @@ static void drain_openssl_errors(void)
+ 		return;
+ 	while (ERR_get_error_line(&file, &line)) {}
+ }
++#endif
+ 
+ #define ERR(cond, fmt, ...)				\
+ 	do {						\
+@@ -142,7 +144,9 @@ static int pem_pw_cb(char *buf, int len, int w, void *v)
+ static EVP_PKEY *read_private_key(const char *private_key_name)
+ {
+ 	EVP_PKEY *private_key;
++	BIO *b;
+ 
++#ifndef OPENSSL_NO_ENGINE
+ 	if (!strncmp(private_key_name, "pkcs11:", 7)) {
+ 		ENGINE *e;
+ 
+@@ -160,17 +164,16 @@ static EVP_PKEY *read_private_key(const char *private_key_name)
+ 		private_key = ENGINE_load_private_key(e, private_key_name,
+ 						      NULL, NULL);
+ 		ERR(!private_key, "%s", private_key_name);
+-	} else {
+-		BIO *b;
+-
+-		b = BIO_new_file(private_key_name, "rb");
+-		ERR(!b, "%s", private_key_name);
+-		private_key = PEM_read_bio_PrivateKey(b, NULL, pem_pw_cb,
+-						      NULL);
+-		ERR(!private_key, "%s", private_key_name);
+-		BIO_free(b);
++		return private_key;
+ 	}
++#endif
+ 
++	b = BIO_new_file(private_key_name, "rb");
++	ERR(!b, "%s", private_key_name);
++	private_key = PEM_read_bio_PrivateKey(b, NULL, pem_pw_cb,
++					      NULL);
++	ERR(!private_key, "%s", private_key_name);
++	BIO_free(b);
+ 	return private_key;
+ }
+ 
+-- 
+2.34.1
+

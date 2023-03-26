@@ -1,0 +1,149 @@
+From bcd2518f67d89ff6de824b7d19ef5769a96d710b Mon Sep 17 00:00:00 2001
+From: Carlos Llamas <cmllamas@google.com>
+Date: Mon, 6 Jun 2022 20:27:12 +0000
+Subject: [PATCH] ANDROID: binder: pass desired priority by reference
+
+Avoid making unnecessary stack copies of struct binder_priority and pass
+the argument by reference instead. Rename 'desired_prio' to 'desired' to
+match the usage in other priority functions.
+
+There is no functional impact from this patch.
+
+Bug: 148101660
+Signed-off-by: Carlos Llamas <cmllamas@google.com>
+Change-Id: I66ff5305296e7b9dba56ed265236f2af518f66e0
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/android/binder.c | 38 +++++++++++++++++++-------------------
+ 1 file changed, 19 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/android/binder.c b/drivers/android/binder.c
+index 168d43ae360c..0129ff3c5eb5 100644
+--- a/drivers/android/binder.c
++++ b/drivers/android/binder.c
+@@ -696,19 +696,19 @@ static int to_kernel_prio(int policy, int user_priority)
+ }
+ 
+ static void binder_do_set_priority(struct task_struct *task,
+-				   struct binder_priority desired,
++				   const struct binder_priority *desired,
+ 				   bool verify)
+ {
+ 	int priority; /* user-space prio value */
+ 	bool has_cap_nice;
+-	unsigned int policy = desired.sched_policy;
++	unsigned int policy = desired->sched_policy;
+ 
+-	if (task->policy == policy && task->normal_prio == desired.prio)
++	if (task->policy == policy && task->normal_prio == desired->prio)
+ 		return;
+ 
+ 	has_cap_nice = has_capability_noaudit(task, CAP_SYS_NICE);
+ 
+-	priority = to_userspace_prio(policy, desired.prio);
++	priority = to_userspace_prio(policy, desired->prio);
+ 
+ 	if (verify && is_rt_policy(policy) && !has_cap_nice) {
+ 		long max_rtprio = task_rlimit(task, RLIMIT_RTPRIO);
+@@ -733,16 +733,16 @@ static void binder_do_set_priority(struct task_struct *task,
+ 		}
+ 	}
+ 
+-	if (policy != desired.sched_policy ||
+-	    to_kernel_prio(policy, priority) != desired.prio)
++	if (policy != desired->sched_policy ||
++	    to_kernel_prio(policy, priority) != desired->prio)
+ 		binder_debug(BINDER_DEBUG_PRIORITY_CAP,
+ 			     "%d: priority %d not allowed, using %d instead\n",
+-			      task->pid, desired.prio,
++			      task->pid, desired->prio,
+ 			      to_kernel_prio(policy, priority));
+ 
+ 	trace_binder_set_priority(task->tgid, task->pid, task->normal_prio,
+ 				  to_kernel_prio(policy, priority),
+-				  desired.prio);
++				  desired->prio);
+ 
+ 	/* Set the actual priority */
+ 	if (task->policy != policy || is_rt_policy(policy)) {
+@@ -759,13 +759,13 @@ static void binder_do_set_priority(struct task_struct *task,
+ }
+ 
+ static void binder_set_priority(struct task_struct *task,
+-				struct binder_priority desired)
++				const struct binder_priority *desired)
+ {
+ 	binder_do_set_priority(task, desired, /* verify = */ true);
+ }
+ 
+ static void binder_restore_priority(struct task_struct *task,
+-				    struct binder_priority desired)
++				    const struct binder_priority *desired)
+ {
+ 	binder_do_set_priority(task, desired, /* verify = */ false);
+ }
+@@ -774,7 +774,7 @@ static void binder_transaction_priority(struct task_struct *task,
+ 					struct binder_transaction *t,
+ 					struct binder_node *node)
+ {
+-	struct binder_priority desired_prio = t->priority;
++	struct binder_priority desired = t->priority;
+ 	const struct binder_priority node_prio = {
+ 		.sched_policy = node->sched_policy,
+ 		.prio = node->min_priority,
+@@ -787,9 +787,9 @@ static void binder_transaction_priority(struct task_struct *task,
+ 	t->saved_priority.sched_policy = task->policy;
+ 	t->saved_priority.prio = task->normal_prio;
+ 
+-	if (!node->inherit_rt && is_rt_policy(desired_prio.sched_policy)) {
+-		desired_prio.prio = NICE_TO_PRIO(0);
+-		desired_prio.sched_policy = SCHED_NORMAL;
++	if (!node->inherit_rt && is_rt_policy(desired.sched_policy)) {
++		desired.prio = NICE_TO_PRIO(0);
++		desired.sched_policy = SCHED_NORMAL;
+ 	}
+ 
+ 	if (node_prio.prio < t->priority.prio ||
+@@ -802,10 +802,10 @@ static void binder_transaction_priority(struct task_struct *task,
+ 		 * SCHED_FIFO, prefer SCHED_FIFO, since it can
+ 		 * run unbounded, unlike SCHED_RR.
+ 		 */
+-		desired_prio = node_prio;
++		desired = node_prio;
+ 	}
+ 
+-	binder_set_priority(task, desired_prio);
++	binder_set_priority(task, &desired);
+ }
+ 
+ static struct binder_node *binder_get_node_ilocked(struct binder_proc *proc,
+@@ -3729,7 +3729,7 @@ static void binder_transaction(struct binder_proc *proc,
+ 		target_proc->outstanding_txns++;
+ 		binder_inner_proc_unlock(target_proc);
+ 		wake_up_interruptible_sync(&target_thread->wait);
+-		binder_restore_priority(current, in_reply_to->saved_priority);
++		binder_restore_priority(current, &in_reply_to->saved_priority);
+ 		binder_free_transaction(in_reply_to);
+ 	} else if (!(t->flags & TF_ONE_WAY)) {
+ 		BUG_ON(t->buffer->async_transaction != 0);
+@@ -3860,7 +3860,7 @@ static void binder_transaction(struct binder_proc *proc,
+ 
+ 	BUG_ON(thread->return_error.cmd != BR_OK);
+ 	if (in_reply_to) {
+-		binder_restore_priority(current, in_reply_to->saved_priority);
++		binder_restore_priority(current, &in_reply_to->saved_priority);
+ 		binder_set_txn_from_error(in_reply_to, t_debug_id,
+ 				return_error, return_error_param);
+ 		thread->return_error.cmd = BR_TRANSACTION_COMPLETE;
+@@ -4531,7 +4531,7 @@ static int binder_thread_read(struct binder_proc *proc,
+ 			wait_event_interruptible(binder_user_error_wait,
+ 						 binder_stop_on_user_error < 2);
+ 		}
+-		binder_restore_priority(current, proc->default_priority);
++		binder_restore_priority(current, &proc->default_priority);
+ 	}
+ 
+ 	if (non_block) {
+-- 
+2.34.1
+

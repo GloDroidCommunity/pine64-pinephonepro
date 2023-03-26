@@ -1,0 +1,49 @@
+From 57b92082de39f6805d8170a70ce29839986dbe42 Mon Sep 17 00:00:00 2001
+From: Greg Kroah-Hartman <gregkh@google.com>
+Date: Wed, 10 Nov 2021 14:25:13 +0100
+Subject: [PATCH] Revert "of/unittest: Disable new dtc
+ node_name_vs_property_name and interrupt_map warnings"
+
+This reverts commit b68d0924ad8391d637f55bad0f987f8696a2d126 as it
+breaks the build on clang-based systems with the errors:
+	FATAL ERROR: Unrecognized check name "interrupt_map"
+	FATAL ERROR: Unrecognized check name "node_name_vs_property_name"
+
+Cc: Rob Herring <robh@kernel.org>
+Fixes: b68d0924ad83 ("of/unittest: Disable new dtc node_name_vs_property_name and interrupt_map warnings")
+Signed-off-by: Greg Kroah-Hartman <gregkh@google.com>
+Change-Id: Ia90d9a1d73604f7f1cace2397fc97e3e35ce5b1c
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/of/unittest-data/Makefile | 8 +-------
+ 1 file changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/drivers/of/unittest-data/Makefile b/drivers/of/unittest-data/Makefile
+index ea5f4da68e23..1bb8670d85a4 100644
+--- a/drivers/of/unittest-data/Makefile
++++ b/drivers/of/unittest-data/Makefile
+@@ -42,9 +42,7 @@ DTC_FLAGS_overlay_base += -@
+ DTC_FLAGS_testcases += -@
+ 
+ # suppress warnings about intentional errors
+-DTC_FLAGS_testcases += -Wno-interrupts_property \
+-	-Wno-node_name_vs_property_name \
+-	-Wno-interrupt_map
++DTC_FLAGS_testcases += -Wno-interrupts_property
+ 
+ # Apply overlays statically with fdtoverlay.  This is a build time test that
+ # the overlays can be applied successfully by fdtoverlay.  This does not
+@@ -94,10 +92,6 @@ apply_static_overlay_1 := overlay_0.dtbo \
+ 
+ apply_static_overlay_2 := overlay.dtbo
+ 
+-DTC_FLAGS_static_base_1 += -Wno-interrupts_property \
+-	-Wno-node_name_vs_property_name \
+-	-Wno-interrupt_map
+-
+ static_test_1-dtbs := static_base_1.dtb $(apply_static_overlay_1)
+ static_test_2-dtbs := static_base_2.dtb $(apply_static_overlay_2)
+ 
+-- 
+2.34.1
+

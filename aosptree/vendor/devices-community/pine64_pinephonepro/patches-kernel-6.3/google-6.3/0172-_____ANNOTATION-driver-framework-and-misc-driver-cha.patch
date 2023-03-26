@@ -1,0 +1,25 @@
+From 61b3e2b64704e373d5274f6bbd60e3d785b49d21 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 13:58:35 -0700
+Subject: [PATCH] _____ANNOTATION: driver framework and misc driver
+ changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: Iddf64b3ed1c670a7e5e87afa07f253a3eed9f5fe
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index d9b062a3ec9f..2eda4ac4fb5b 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -8,3 +8,4 @@ cpufreq changes
+ mm (memory management) changes
+ security changes
+ dma-buf changes
++driver framework and misc driver changes
+-- 
+2.34.1
+

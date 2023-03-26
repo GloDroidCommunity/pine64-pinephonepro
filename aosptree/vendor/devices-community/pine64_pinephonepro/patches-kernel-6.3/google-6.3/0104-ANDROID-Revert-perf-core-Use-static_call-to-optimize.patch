@@ -1,0 +1,148 @@
+From 1aee735fbbe79a3aa3fc0c3198d73321f8eb58d5 Mon Sep 17 00:00:00 2001
+From: Will McVicker <willmcvicker@google.com>
+Date: Wed, 2 Feb 2022 12:22:56 -0800
+Subject: [PATCH] ANDROID: Revert "perf/core: Use static_call to optimize
+ perf_guest_info_callbacks"
+
+This reverts commit 87b940a0675e25261f022ac3e53e0dfff9cdb995. When
+booting with the Pixel 6, I hit the below CFI failure. An email ([1])
+was sent upstream to address this issue.
+
+  Kernel panic - not syncing: CFI failure (target: __static_call_return0+0x0/0x8)
+  CPU: 0 PID: 1625 Comm: batterystats-wo Tainted: G        W  OE     5.16.0-mainline #1$
+  Hardware name: Raven EVT 1.1 (DT)$
+  Call trace:$
+   dump_backtrace+0xf0/0x130$
+   show_stack+0x1c/0x2c$
+   dump_stack_lvl+0x68/0x98$
+   panic+0x168/0x420$
+   __cfi_check_fail+0x58/0x5c$
+   __cfi_slowpath_diag+0x150/0x1a4$
+   perf_misc_flags+0x74/0xa4$
+   perf_prepare_sample+0x50/0x44c$
+   perf_event_output_forward+0x5c/0xcc$
+   __perf_event_overflow+0xc8/0x188$
+   perf_swevent_event+0x7c/0x10c$
+   perf_tp_event+0x168/0x298$
+   perf_trace_run_bpf_submit+0x8c/0xdc$
+   perf_trace_sched_switch+0x180/0x1cc$
+   __schedule+0x850/0x924$
+   schedule+0x98/0xe0$
+   binder_wait_for_work+0x158/0x368$
+   binder_thread_read+0x278/0x243c$
+   binder_ioctl_write_read+0x120/0x45c$
+   binder_ioctl+0x1ac/0xc34$
+   __arm64_sys_ioctl+0xa8/0x118$
+   invoke_syscall+0x64/0x178$
+   el0_svc_common+0x8c/0x100$
+   do_el0_svc+0x28/0xa0$
+   el0_svc+0x24/0x84$
+   el0t_64_sync_handler+0x88/0xec$
+   el0t_64_sync+0x1b4/0x1b8$
+
+[1] https://lore.kernel.org/all/YfrQzoIWyv9lNljh@google.com/
+
+Bug: 217583980
+Signed-off-by: Will McVicker <willmcvicker@google.com>
+Change-Id: I2951676ca4cce5e55461a71a670b35f9af41ba4e
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/linux/perf_event.h | 34 ++++++++++++++++++++++++++--------
+ kernel/events/core.c       | 15 ---------------
+ 2 files changed, 26 insertions(+), 23 deletions(-)
+
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index d5628a7b5eaa..1437259a1139 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -1464,22 +1464,40 @@ extern void perf_event_bpf_event(struct bpf_prog *prog,
+ 
+ #ifdef CONFIG_GUEST_PERF_EVENTS
+ extern struct perf_guest_info_callbacks __rcu *perf_guest_cbs;
+-
+-DECLARE_STATIC_CALL(__perf_guest_state, *perf_guest_cbs->state);
+-DECLARE_STATIC_CALL(__perf_guest_get_ip, *perf_guest_cbs->get_ip);
+-DECLARE_STATIC_CALL(__perf_guest_handle_intel_pt_intr, *perf_guest_cbs->handle_intel_pt_intr);
+-
++static inline struct perf_guest_info_callbacks *perf_get_guest_cbs(void)
++{
++	/*
++	 * Callbacks are RCU-protected and must be READ_ONCE to avoid reloading
++	 * the callbacks between a !NULL check and dereferences, to ensure
++	 * pending stores/changes to the callback pointers are visible before a
++	 * non-NULL perf_guest_cbs is visible to readers, and to prevent a
++	 * module from unloading callbacks while readers are active.
++	 */
++	return rcu_dereference(perf_guest_cbs);
++}
+ static inline unsigned int perf_guest_state(void)
+ {
+-	return static_call(__perf_guest_state)();
++	struct perf_guest_info_callbacks *guest_cbs = perf_get_guest_cbs();
++
++	return guest_cbs ? guest_cbs->state() : 0;
+ }
+ static inline unsigned long perf_guest_get_ip(void)
+ {
+-	return static_call(__perf_guest_get_ip)();
++	struct perf_guest_info_callbacks *guest_cbs = perf_get_guest_cbs();
++
++	/*
++	 * Arbitrarily return '0' in the unlikely scenario that the callbacks
++	 * are unregistered between checking guest state and getting the IP.
++	 */
++	return guest_cbs ? guest_cbs->get_ip() : 0;
+ }
+ static inline unsigned int perf_guest_handle_intel_pt_intr(void)
+ {
+-	return static_call(__perf_guest_handle_intel_pt_intr)();
++	struct perf_guest_info_callbacks *guest_cbs = perf_get_guest_cbs();
++
++	if (guest_cbs && guest_cbs->handle_intel_pt_intr)
++		return guest_cbs->handle_intel_pt_intr();
++	return 0;
+ }
+ extern void perf_register_guest_info_callbacks(struct perf_guest_info_callbacks *cbs);
+ extern void perf_unregister_guest_info_callbacks(struct perf_guest_info_callbacks *cbs);
+diff --git a/kernel/events/core.c b/kernel/events/core.c
+index fb3e436bcd4a..d80904c7a60a 100644
+--- a/kernel/events/core.c
++++ b/kernel/events/core.c
+@@ -6757,23 +6757,12 @@ static void perf_pending_task(struct callback_head *head)
+ #ifdef CONFIG_GUEST_PERF_EVENTS
+ struct perf_guest_info_callbacks __rcu *perf_guest_cbs;
+ 
+-DEFINE_STATIC_CALL_RET0(__perf_guest_state, *perf_guest_cbs->state);
+-DEFINE_STATIC_CALL_RET0(__perf_guest_get_ip, *perf_guest_cbs->get_ip);
+-DEFINE_STATIC_CALL_RET0(__perf_guest_handle_intel_pt_intr, *perf_guest_cbs->handle_intel_pt_intr);
+-
+ void perf_register_guest_info_callbacks(struct perf_guest_info_callbacks *cbs)
+ {
+ 	if (WARN_ON_ONCE(rcu_access_pointer(perf_guest_cbs)))
+ 		return;
+ 
+ 	rcu_assign_pointer(perf_guest_cbs, cbs);
+-	static_call_update(__perf_guest_state, cbs->state);
+-	static_call_update(__perf_guest_get_ip, cbs->get_ip);
+-
+-	/* Implementing ->handle_intel_pt_intr is optional. */
+-	if (cbs->handle_intel_pt_intr)
+-		static_call_update(__perf_guest_handle_intel_pt_intr,
+-				   cbs->handle_intel_pt_intr);
+ }
+ EXPORT_SYMBOL_GPL(perf_register_guest_info_callbacks);
+ 
+@@ -6783,10 +6772,6 @@ void perf_unregister_guest_info_callbacks(struct perf_guest_info_callbacks *cbs)
+ 		return;
+ 
+ 	rcu_assign_pointer(perf_guest_cbs, NULL);
+-	static_call_update(__perf_guest_state, (void *)&__static_call_return0);
+-	static_call_update(__perf_guest_get_ip, (void *)&__static_call_return0);
+-	static_call_update(__perf_guest_handle_intel_pt_intr,
+-			   (void *)&__static_call_return0);
+ 	synchronize_rcu();
+ }
+ EXPORT_SYMBOL_GPL(perf_unregister_guest_info_callbacks);
+-- 
+2.34.1
+

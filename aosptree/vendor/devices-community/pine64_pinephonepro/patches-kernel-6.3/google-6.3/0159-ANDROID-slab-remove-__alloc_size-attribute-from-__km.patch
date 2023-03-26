@@ -1,0 +1,40 @@
+From 539592db0ccb285fdfa685da8473a1975996ee08 Mon Sep 17 00:00:00 2001
+From: Will McVicker <willmcvicker@google.com>
+Date: Fri, 14 Oct 2022 11:41:52 -0700
+Subject: [PATCH] ANDROID: slab: remove __alloc_size attribute from
+ __kmalloc_node_track_caller
+
+Commit f78a03f6e28b ("mm/slab_common: remove CONFIG_NUMA ifdefs for
+common kmalloc functions") added back the __alloc_size(1) attribute to
+__kmalloc_node_track_caller() which was removed in commit 93dd04ab0b2b
+("slab: remove __alloc_size attribute from __kmalloc_track_caller") due
+to causing a kernal panic when using the clang compiler. Let's remove it
+again since we are hitting the same kernel panic.
+
+The Clang team is still investigating this issue. Refer to
+https://github.com/ClangBuiltLinux/linux/issues/1599 for more details.
+
+Bug: 220186325
+Signed-off-by: Will McVicker <willmcvicker@google.com>
+Change-Id: I2ca64ab68e7c96032924f0ee2bc00a32db1c19f7
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/linux/slab.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/linux/slab.h b/include/linux/slab.h
+index 45af70315a94..c44f34bf7312 100644
+--- a/include/linux/slab.h
++++ b/include/linux/slab.h
+@@ -668,7 +668,7 @@ static inline __alloc_size(1, 2) void *kcalloc(size_t n, size_t size, gfp_t flag
+ }
+ 
+ void *__kmalloc_node_track_caller(size_t size, gfp_t flags, int node,
+-				  unsigned long caller) __alloc_size(1);
++				  unsigned long caller);
+ #define kmalloc_node_track_caller(size, flags, node) \
+ 	__kmalloc_node_track_caller(size, flags, node, \
+ 				    _RET_IP_)
+-- 
+2.34.1
+

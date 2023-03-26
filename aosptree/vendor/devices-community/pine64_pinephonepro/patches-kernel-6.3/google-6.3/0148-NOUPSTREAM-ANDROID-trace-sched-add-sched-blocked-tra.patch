@@ -1,0 +1,82 @@
+From 0f1e6612f35d6a4bed30bc0f2de3d691add5286b Mon Sep 17 00:00:00 2001
+From: Riley Andrews <riandrews@google.com>
+Date: Fri, 2 Oct 2015 00:39:53 -0700
+Subject: [PATCH] NOUPSTREAM: ANDROID: trace: sched: add sched blocked
+ tracepoint which dumps out context of sleep.
+
+Declare war on uninterruptible sleep. Add a tracepoint which
+walks the kernel stack and dumps the first non-scheduler function
+called before the scheduler is invoked.
+
+[CPNOTE: 30/06/21] Lee: TODO: Investigate worthiness of upstreaming
+[CPNOTE: 30/09/21] Lee: Peter Zijlstra has said 'no more trace events'
+
+Squash:
+  ANDROID: sched: move blocked reason trace point to cover all class
+
+Bug: 120445457
+Bug: 203080186
+Change-Id: I19e965d5206329360a92cbfe2afcc8c30f65c229
+Signed-off-by: Riley Andrews <riandrews@google.com>
+[astrachan: deleted an unnecessary whitespace change]
+Signed-off-by: Alistair Strachan <astrachan@google.com>
+Bug: 170916884
+Signed-off-by: Todd Kjos <tkjos@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/trace/events/sched.h | 24 ++++++++++++++++++++++++
+ kernel/sched/core.c          |  3 +++
+ 2 files changed, 27 insertions(+)
+
+diff --git a/include/trace/events/sched.h b/include/trace/events/sched.h
+index fbb99a61f714..cd969a6b61c0 100644
+--- a/include/trace/events/sched.h
++++ b/include/trace/events/sched.h
+@@ -487,6 +487,30 @@ DEFINE_EVENT_SCHEDSTAT(sched_stat_template, sched_stat_blocked,
+ 	     TP_PROTO(struct task_struct *tsk, u64 delay),
+ 	     TP_ARGS(tsk, delay));
+ 
++/*
++ * Tracepoint for recording the cause of uninterruptible sleep.
++ */
++TRACE_EVENT(sched_blocked_reason,
++
++	TP_PROTO(struct task_struct *tsk),
++
++	TP_ARGS(tsk),
++
++	TP_STRUCT__entry(
++		__field( pid_t,	pid	)
++		__field( void*, caller	)
++		__field( bool, io_wait	)
++	),
++
++	TP_fast_assign(
++		__entry->pid	= tsk->pid;
++		__entry->caller = (void *)__get_wchan(tsk);
++		__entry->io_wait = tsk->in_iowait;
++	),
++
++	TP_printk("pid=%d iowait=%d caller=%pS", __entry->pid, __entry->io_wait, __entry->caller)
++);
++
+ /*
+  * Tracepoint for accounting runtime (time the task is executing
+  * on a CPU).
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 2c9c89846ae2..6fd8fb1d12a1 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -4192,6 +4192,9 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
+ 	if (READ_ONCE(p->on_rq) && ttwu_runnable(p, wake_flags))
+ 		goto unlock;
+ 
++	if (READ_ONCE(p->__state) & TASK_UNINTERRUPTIBLE)
++		trace_sched_blocked_reason(p);
++
+ #ifdef CONFIG_SMP
+ 	/*
+ 	 * Ensure we load p->on_cpu _after_ p->on_rq, otherwise it would be
+-- 
+2.34.1
+

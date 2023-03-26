@@ -1,0 +1,137 @@
+From 13637953a429a5fd0bc3d512a9eac56e8153d67b Mon Sep 17 00:00:00 2001
+From: Stephen Dickey <quic_dickey@quicinc.com>
+Date: Thu, 4 Nov 2021 15:23:24 -0700
+Subject: [PATCH] ANDROID: sched: Re-enable removed-from-mainline support
+ required for CPU Pause
+
+__pick_migrate_task() was present in 5.10 and removed in
+5.15 in favor of the balance_push concept.
+
+Restore this function so that the ability to pick a task to migrate
+across all scheduling classes can be used by vendor modules needed to
+implement CPU Pause.
+
+Function Removed In commit 1cf12e08bc4d50a76b80c42a3109c53d8794a0c9
+sched/hotplug: Consolidate task migration on CPU unplug
+
+Bug: 205164003
+Change-Id: I56ecd96c32b49495132daefbfc106568ab84e528
+Signed-off-by: Stephen Dickey <quic_dickey@quicinc.com>
+Signed-off-by: Ashay Jaiswal <quic_ashayj@quicinc.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/linux/sched.h |  2 ++
+ kernel/sched/core.c   | 26 +++++++++++++++++++++++---
+ kernel/sched/sched.h  |  5 +++++
+ kernel/stop_machine.c |  1 +
+ 4 files changed, 31 insertions(+), 3 deletions(-)
+
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 3046b50a0293..385bd16c1a90 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -311,6 +311,8 @@ extern int __must_check io_schedule_prepare(void);
+ extern void io_schedule_finish(int token);
+ extern long io_schedule_timeout(long timeout);
+ extern void io_schedule(void);
++extern struct task_struct *pick_migrate_task(struct rq *rq);
++extern int select_fallback_rq(int cpu, struct task_struct *p);
+ 
+ /**
+  * struct prev_cputime - snapshot of system and user cputime
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 35a59a097103..16c49bf4f950 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -2372,8 +2372,8 @@ struct set_affinity_pending {
+  * So we race with normal scheduler movements, but that's OK, as long
+  * as the task is no longer on this CPU.
+  */
+-static struct rq *__migrate_task(struct rq *rq, struct rq_flags *rf,
+-				 struct task_struct *p, int dest_cpu)
++struct rq *__migrate_task(struct rq *rq, struct rq_flags *rf,
++			  struct task_struct *p, int dest_cpu)
+ {
+ 	/* Affinity changed (again). */
+ 	if (!is_cpu_allowed(p, dest_cpu))
+@@ -2384,6 +2384,7 @@ static struct rq *__migrate_task(struct rq *rq, struct rq_flags *rf,
+ 
+ 	return rq;
+ }
++EXPORT_SYMBOL_GPL(__migrate_task);
+ 
+ /*
+  * migration_cpu_stop - this will be executed by a highprio stopper thread
+@@ -3476,7 +3477,7 @@ EXPORT_SYMBOL_GPL(kick_process);
+  * select_task_rq() below may allow selection of !active CPUs in order
+  * to satisfy the above rules.
+  */
+-static int select_fallback_rq(int cpu, struct task_struct *p)
++int select_fallback_rq(int cpu, struct task_struct *p)
+ {
+ 	int nid = cpu_to_node(cpu);
+ 	const struct cpumask *nodemask = NULL;
+@@ -3546,6 +3547,7 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
+ 
+ 	return dest_cpu;
+ }
++EXPORT_SYMBOL_GPL(select_fallback_rq);
+ 
+ /*
+  * The caller (fork, wakeup) owns p->pi_lock, ->cpus_ptr is stable.
+@@ -9291,6 +9293,24 @@ void idle_task_exit(void)
+ 	/* finish_cpu(), as ran on the BP, will clean up the active_mm state */
+ }
+ 
++struct task_struct *pick_migrate_task(struct rq *rq)
++{
++	const struct sched_class *class;
++	struct task_struct *next;
++
++	for_each_class(class) {
++		next = class->pick_next_task(rq);
++		if (next) {
++			next->sched_class->put_prev_task(rq, next);
++			return next;
++		}
++	}
++
++	/* The idle class should always have a runnable task */
++	BUG();
++}
++EXPORT_SYMBOL_GPL(pick_migrate_task);
++
+ static int __balance_push_cpu_stop(void *arg)
+ {
+ 	struct task_struct *p = arg;
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index 5fa7007f97fc..516170e59b18 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -1563,6 +1563,11 @@ struct rq_flags {
+ #endif
+ };
+ 
++#ifdef CONFIG_SMP
++extern struct rq *__migrate_task(struct rq *rq, struct rq_flags *rf,
++				 struct task_struct *p, int dest_cpu);
++#endif
++
+ extern struct balance_callback balance_push_callback;
+ 
+ /*
+diff --git a/kernel/stop_machine.c b/kernel/stop_machine.c
+index cedb17ba158a..096c86b283ea 100644
+--- a/kernel/stop_machine.c
++++ b/kernel/stop_machine.c
+@@ -152,6 +152,7 @@ int stop_one_cpu(unsigned int cpu, cpu_stop_fn_t fn, void *arg)
+ 	wait_for_completion(&done.completion);
+ 	return done.ret;
+ }
++EXPORT_SYMBOL_GPL(stop_one_cpu);
+ 
+ /* This controls the threads on each CPU. */
+ enum multi_stop_state {
+-- 
+2.34.1
+

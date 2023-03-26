@@ -1,0 +1,114 @@
+From df3812f275ff69dfd669bf4f5d48077931a9354f Mon Sep 17 00:00:00 2001
+From: Alessio Balsini <balsini@google.com>
+Date: Mon, 25 Jan 2021 17:05:31 +0000
+Subject: [PATCH] FROMLIST: fuse: Introduce passthrough for mmap
+
+Enabling FUSE passthrough for mmap-ed operations not only affects
+performance, but has also been shown as mandatory for the correct
+functioning of FUSE passthrough.
+yanwu noticed [1] that a FUSE file with passthrough enabled may suffer
+data inconsistencies if the same file is also accessed with mmap. What
+happens is that read/write operations are directly applied to the lower
+file system (and its cache), while mmap-ed operations are affecting the
+FUSE cache.
+
+Extend the FUSE passthrough implementation to also handle memory-mapped
+FUSE file, to both fix the cache inconsistencies and extend the
+passthrough performance benefits to mmap-ed operations.
+
+[1] https://lore.kernel.org/lkml/20210119110654.11817-1-wu-yan@tcl.com/
+
+[CPNOTE: 21/05/21] Lee: Still fresh - hopefully this will land upstream soon
+
+Bug: 168023149
+Link: https://lore.kernel.org/lkml/20210125153057.3623715-9-balsini@android.com/
+Signed-off-by: Alessio Balsini <balsini@android.com>
+Change-Id: Ifad4698b0380f6e004c487940ac6907b9a9f2964
+Signed-off-by: Alessio Balsini <balsini@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/fuse/file.c        |  3 +++
+ fs/fuse/fuse_i.h      |  1 +
+ fs/fuse/passthrough.c | 41 +++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 45 insertions(+)
+
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+index 05749ee55380..346dc8dae680 100644
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -2514,6 +2514,9 @@ static int fuse_file_mmap(struct file *file, struct vm_area_struct *vma)
+ 	if (FUSE_IS_DAX(file_inode(file)))
+ 		return fuse_dax_mmap(file, vma);
+ 
++	if (ff->passthrough.filp)
++		return fuse_passthrough_mmap(file, vma);
++
+ 	if (ff->open_flags & FOPEN_DIRECT_IO) {
+ 		/* Can't provide the coherency needed for MAP_SHARED */
+ 		if (vma->vm_flags & VM_MAYSHARE)
+diff --git a/fs/fuse/fuse_i.h b/fs/fuse/fuse_i.h
+index a84eb46f5b52..b4713f451aa6 100644
+--- a/fs/fuse/fuse_i.h
++++ b/fs/fuse/fuse_i.h
+@@ -1355,5 +1355,6 @@ int fuse_passthrough_setup(struct fuse_conn *fc, struct fuse_file *ff,
+ void fuse_passthrough_release(struct fuse_passthrough *passthrough);
+ ssize_t fuse_passthrough_read_iter(struct kiocb *iocb, struct iov_iter *to);
+ ssize_t fuse_passthrough_write_iter(struct kiocb *iocb, struct iov_iter *from);
++ssize_t fuse_passthrough_mmap(struct file *file, struct vm_area_struct *vma);
+ 
+ #endif /* _FS_FUSE_I_H */
+diff --git a/fs/fuse/passthrough.c b/fs/fuse/passthrough.c
+index 9cdb8811b530..7a950741fed7 100644
+--- a/fs/fuse/passthrough.c
++++ b/fs/fuse/passthrough.c
+@@ -139,6 +139,47 @@ ssize_t fuse_passthrough_write_iter(struct kiocb *iocb_fuse,
+ 	return ret;
+ }
+ 
++ssize_t fuse_passthrough_mmap(struct file *file, struct vm_area_struct *vma)
++{
++	int ret;
++	const struct cred *old_cred;
++	struct fuse_file *ff = file->private_data;
++	struct inode *fuse_inode = file_inode(file);
++	struct file *passthrough_filp = ff->passthrough.filp;
++	struct inode *passthrough_inode = file_inode(passthrough_filp);
++
++	if (!passthrough_filp->f_op->mmap)
++		return -ENODEV;
++
++	if (WARN_ON(file != vma->vm_file))
++		return -EIO;
++
++	vma->vm_file = get_file(passthrough_filp);
++
++	old_cred = override_creds(ff->passthrough.cred);
++	ret = call_mmap(vma->vm_file, vma);
++	revert_creds(old_cred);
++
++	if (ret)
++		fput(passthrough_filp);
++	else
++		fput(file);
++
++	if (file->f_flags & O_NOATIME)
++		return ret;
++
++	if ((!timespec64_equal(&fuse_inode->i_mtime,
++			       &passthrough_inode->i_mtime) ||
++	     !timespec64_equal(&fuse_inode->i_ctime,
++			       &passthrough_inode->i_ctime))) {
++		fuse_inode->i_mtime = passthrough_inode->i_mtime;
++		fuse_inode->i_ctime = passthrough_inode->i_ctime;
++	}
++	touch_atime(&file->f_path);
++
++	return ret;
++}
++
+ int fuse_passthrough_open(struct fuse_dev *fud,
+ 			  struct fuse_passthrough_out *pto)
+ {
+-- 
+2.34.1
+

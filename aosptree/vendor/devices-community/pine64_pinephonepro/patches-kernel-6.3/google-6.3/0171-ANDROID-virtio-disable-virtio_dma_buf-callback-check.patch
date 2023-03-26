@@ -1,0 +1,54 @@
+From dd20dcac9a2622b02d525ba0b8890ce10abc096f Mon Sep 17 00:00:00 2001
+From: Sami Tolvanen <samitolvanen@google.com>
+Date: Thu, 28 Jan 2021 11:35:05 -0800
+Subject: [PATCH] ANDROID: virtio: disable virtio_dma_buf callback checks with
+ CFI
+
+CONFIG_CFI_CLANG breaks cross-module function address equality, which
+breaks virtio_dma_buf as it compares a locally taken function address to
+a one passed from a different module. Remove these sanity checks for now
+to allow Cuttlefish to boot with CFI.
+
+Bug: 178495907
+Bug: 199547335
+Change-Id: I508e2fa9e3ddd888dc2fdb743cec20a400eaf1f5
+Signed-off-by: Sami Tolvanen <samitolvanen@google.com>
+Signed-off-by: Alistair Delva <adelva@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/virtio/virtio_dma_buf.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/virtio/virtio_dma_buf.c b/drivers/virtio/virtio_dma_buf.c
+index 2521a75009c3..19a843fad6c6 100644
+--- a/drivers/virtio/virtio_dma_buf.c
++++ b/drivers/virtio/virtio_dma_buf.c
+@@ -25,11 +25,14 @@ struct dma_buf *virtio_dma_buf_export
+ 			     const struct virtio_dma_buf_ops, ops);
+ 
+ 	if (!exp_info->ops ||
+-	    exp_info->ops->attach != &virtio_dma_buf_attach ||
+ 	    !virtio_ops->get_uuid) {
+ 		return ERR_PTR(-EINVAL);
+ 	}
+ 
++	if (!(IS_ENABLED(CONFIG_CFI_CLANG) && IS_ENABLED(CONFIG_MODULES)) &&
++	    exp_info->ops->attach != &virtio_dma_buf_attach)
++		return ERR_PTR(-EINVAL);
++
+ 	return dma_buf_export(exp_info);
+ }
+ EXPORT_SYMBOL(virtio_dma_buf_export);
+@@ -60,6 +63,9 @@ EXPORT_SYMBOL(virtio_dma_buf_attach);
+  */
+ bool is_virtio_dma_buf(struct dma_buf *dma_buf)
+ {
++	if (IS_ENABLED(CONFIG_CFI_CLANG) && IS_ENABLED(CONFIG_MODULES))
++		return true;
++
+ 	return dma_buf->ops->attach == &virtio_dma_buf_attach;
+ }
+ EXPORT_SYMBOL(is_virtio_dma_buf);
+-- 
+2.34.1
+

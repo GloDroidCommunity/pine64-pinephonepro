@@ -1,0 +1,24 @@
+From 547502657a52e8f9e8a57e77037c0cf1c67299e4 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 13:58:02 -0700
+Subject: [PATCH] _____ANNOTATION: cpufreq changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: Ic6eff5fd0e0050c22257507f7abce22e68ea83ed
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index b7da5fba7022..c3e903439074 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -4,3 +4,4 @@ kbuild changes
+ core kernel changes
+ power management changes
+ scheduler changes
++cpufreq changes
+-- 
+2.34.1
+

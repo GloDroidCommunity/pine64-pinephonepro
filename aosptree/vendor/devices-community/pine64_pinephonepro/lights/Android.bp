@@ -1,0 +1,14 @@
+cc_binary {
+    name: "android.hardware.lights-service.pinephonepro",
+    relative_install_path: "hw",
+    init_rc: ["android.hardware.lights-service.pinephonepro.rc"],
+    vintf_fragments: ["android.hardware.lights-service.pinephonepro.xml"],
+    vendor: true,
+    shared_libs: [
+        "libbase",
+        "libbinder_ndk",
+        "android.hardware.light-V2-ndk",
+    ],
+
+    srcs: ["lights.cpp"],
+}

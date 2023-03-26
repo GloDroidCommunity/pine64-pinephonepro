@@ -1,0 +1,48 @@
+From 496eb7823e4be9584c67e2d90857f5541f57f559 Mon Sep 17 00:00:00 2001
+From: Steve Muckle <smuckle@google.com>
+Date: Thu, 17 Oct 2019 12:14:13 -0700
+Subject: [PATCH] ANDROID: unconditionally compile sig_ok in struct module
+
+The generic kernel image must have module signing disabled so it can
+load kernel modules from all vendors. Unfortunately loading a signed
+kernel module into a kernel with module signing disabled will fail
+because struct module_layout (which appears in kernel modules) contains
+struct module, and struct module contains the sig_ok field, which is
+conditionally compiled depending on CONFIG_MODULE_SIG (module signing).
+
+Unconditionally compile the sig_ok field to work around this problem.
+
+[CPNOTE: 16/06/21] Lee: Pinged the bug for status
+
+Bug: 135940219
+Test: load a signed kernel module with module signing disabled
+Change-Id: I5cc437c806f74f89c0e45ce4135136ca0c70738e
+Signed-off-by: Steve Muckle <smuckle@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/linux/module.h | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/include/linux/module.h b/include/linux/module.h
+index 4435ad9439ab..33883dbe97c4 100644
+--- a/include/linux/module.h
++++ b/include/linux/module.h
+@@ -412,10 +412,12 @@ struct module {
+ 	const s32 *gpl_crcs;
+ 	bool using_gplonly_symbols;
+ 
+-#ifdef CONFIG_MODULE_SIG
+-	/* Signature was verified. */
++	/*
++	 * Signature was verified. Unconditionally compiled in Android to
++	 * preserve ABI compatibility between kernels without module
++	 * signing enabled and signed modules.
++	 */
+ 	bool sig_ok;
+-#endif
+ 
+ 	bool async_probe_requested;
+ 
+-- 
+2.34.1
+

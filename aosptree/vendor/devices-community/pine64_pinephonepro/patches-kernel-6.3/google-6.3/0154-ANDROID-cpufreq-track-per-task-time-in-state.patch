@@ -1,0 +1,485 @@
+From e09889ada28227d67c54dead12be12261b0fbb86 Mon Sep 17 00:00:00 2001
+From: Connor O'Brien <connoro@google.com>
+Date: Wed, 31 Jan 2018 18:11:57 -0800
+Subject: [PATCH] ANDROID: cpufreq: track per-task time in state
+
+Add time in state data to task structs, and create
+/proc/<pid>/time_in_state files to show how long each individual task
+has run at each frequency.
+Create a CONFIG_CPU_FREQ_TIMES option to enable/disable this tracking.
+
+[CPNOTE: 01/07/21] Lee: Requested status on the bug
+
+Bug: 72339335
+Bug: 127641090
+Test: Read /proc/<pid>/time_in_state
+Change-Id: Ia6456754f4cb1e83b2bc35efa8fbe9f8696febc8
+Signed-off-by: Connor O'Brien <connoro@google.com>
+[adelva: Folded the following changes into this patch:
+         a6d3de6a7fba ("ANDROID: Reduce use of #ifdef CONFIG_CPU_FREQ_TIMES")
+         b89ada5d9c09 ("ANDROID: Fix massive cpufreq_times memory leaks")]
+Signed-off-by: Alistair Delva <adelva@google.com>
+[Lee: Squash in all subsequent changes]
+Signed-off-by: Lee Jones <lee.jones@linaro.org>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/cpufreq/Kconfig         |   7 ++
+ drivers/cpufreq/Makefile        |   5 +-
+ drivers/cpufreq/cpufreq.c       |   3 +
+ drivers/cpufreq/cpufreq_times.c | 211 ++++++++++++++++++++++++++++++++
+ fs/proc/base.c                  |   7 ++
+ include/linux/cpufreq_times.h   |  42 +++++++
+ include/linux/sched.h           |   4 +
+ kernel/fork.c                   |   6 +
+ kernel/sched/cputime.c          |   7 ++
+ 9 files changed, 291 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/cpufreq/cpufreq_times.c
+ create mode 100644 include/linux/cpufreq_times.h
+
+diff --git a/drivers/cpufreq/Kconfig b/drivers/cpufreq/Kconfig
+index 2c839bd2b051..cbff98aba119 100644
+--- a/drivers/cpufreq/Kconfig
++++ b/drivers/cpufreq/Kconfig
+@@ -34,6 +34,13 @@ config CPU_FREQ_STAT
+ 
+ 	  If in doubt, say N.
+ 
++config CPU_FREQ_TIMES
++       bool "CPU frequency time-in-state statistics"
++       help
++         Export CPU time-in-state information through procfs.
++
++         If in doubt, say N.
++
+ choice
+ 	prompt "Default CPUFreq governor"
+ 	default CPU_FREQ_DEFAULT_GOV_USERSPACE if ARM_SA1110_CPUFREQ
+diff --git a/drivers/cpufreq/Makefile b/drivers/cpufreq/Makefile
+index ef8510774913..d84be947118c 100644
+--- a/drivers/cpufreq/Makefile
++++ b/drivers/cpufreq/Makefile
+@@ -5,7 +5,10 @@ obj-$(CONFIG_CPU_FREQ)			+= cpufreq.o freq_table.o
+ # CPUfreq stats
+ obj-$(CONFIG_CPU_FREQ_STAT)             += cpufreq_stats.o
+ 
+-# CPUfreq governors 
++# CPUfreq times
++obj-$(CONFIG_CPU_FREQ_TIMES)		+= cpufreq_times.o
++
++# CPUfreq governors
+ obj-$(CONFIG_CPU_FREQ_GOV_PERFORMANCE)	+= cpufreq_performance.o
+ obj-$(CONFIG_CPU_FREQ_GOV_POWERSAVE)	+= cpufreq_powersave.o
+ obj-$(CONFIG_CPU_FREQ_GOV_USERSPACE)	+= cpufreq_userspace.o
+diff --git a/drivers/cpufreq/cpufreq.c b/drivers/cpufreq/cpufreq.c
+index 58f6c1a02223..d1684953e5c8 100644
+--- a/drivers/cpufreq/cpufreq.c
++++ b/drivers/cpufreq/cpufreq.c
+@@ -16,6 +16,7 @@
+ 
+ #include <linux/cpu.h>
+ #include <linux/cpufreq.h>
++#include <linux/cpufreq_times.h>
+ #include <linux/cpu_cooling.h>
+ #include <linux/delay.h>
+ #include <linux/device.h>
+@@ -387,6 +388,7 @@ static void cpufreq_notify_transition(struct cpufreq_policy *policy,
+ 					 CPUFREQ_POSTCHANGE, freqs);
+ 
+ 		cpufreq_stats_record_transition(policy, freqs->new);
++		cpufreq_times_record_transition(policy, freqs->new);
+ 		policy->cur = freqs->new;
+ 	}
+ }
+@@ -1489,6 +1491,7 @@ static int cpufreq_online(unsigned int cpu)
+ 			goto out_destroy_policy;
+ 
+ 		cpufreq_stats_create_table(policy);
++		cpufreq_times_create_policy(policy);
+ 
+ 		write_lock_irqsave(&cpufreq_driver_lock, flags);
+ 		list_add(&policy->policy_list, &cpufreq_policy_list);
+diff --git a/drivers/cpufreq/cpufreq_times.c b/drivers/cpufreq/cpufreq_times.c
+new file mode 100644
+index 000000000000..4df55b323fc1
+--- /dev/null
++++ b/drivers/cpufreq/cpufreq_times.c
+@@ -0,0 +1,211 @@
++/* drivers/cpufreq/cpufreq_times.c
++ *
++ * Copyright (C) 2018 Google, Inc.
++ *
++ * This software is licensed under the terms of the GNU General Public
++ * License version 2, as published by the Free Software Foundation, and
++ * may be copied, distributed, and modified under those terms.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ */
++
++#include <linux/cpufreq.h>
++#include <linux/cpufreq_times.h>
++#include <linux/jiffies.h>
++#include <linux/sched.h>
++#include <linux/seq_file.h>
++#include <linux/slab.h>
++#include <linux/spinlock.h>
++#include <linux/threads.h>
++
++static DEFINE_SPINLOCK(task_time_in_state_lock); /* task->time_in_state */
++
++/**
++ * struct cpu_freqs - per-cpu frequency information
++ * @offset: start of these freqs' stats in task time_in_state array
++ * @max_state: number of entries in freq_table
++ * @last_index: index in freq_table of last frequency switched to
++ * @freq_table: list of available frequencies
++ */
++struct cpu_freqs {
++	unsigned int offset;
++	unsigned int max_state;
++	unsigned int last_index;
++	unsigned int freq_table[0];
++};
++
++static struct cpu_freqs *all_freqs[NR_CPUS];
++
++static unsigned int next_offset;
++
++void cpufreq_task_times_init(struct task_struct *p)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&task_time_in_state_lock, flags);
++	p->time_in_state = NULL;
++	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
++	p->max_state = 0;
++}
++
++void cpufreq_task_times_alloc(struct task_struct *p)
++{
++	void *temp;
++	unsigned long flags;
++	unsigned int max_state = READ_ONCE(next_offset);
++
++	/* We use one array to avoid multiple allocs per task */
++	temp = kcalloc(max_state, sizeof(p->time_in_state[0]), GFP_ATOMIC);
++	if (!temp)
++		return;
++
++	spin_lock_irqsave(&task_time_in_state_lock, flags);
++	p->time_in_state = temp;
++	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
++	p->max_state = max_state;
++}
++
++/* Caller must hold task_time_in_state_lock */
++static int cpufreq_task_times_realloc_locked(struct task_struct *p)
++{
++	void *temp;
++	unsigned int max_state = READ_ONCE(next_offset);
++
++	temp = krealloc(p->time_in_state, max_state * sizeof(u64), GFP_ATOMIC);
++	if (!temp)
++		return -ENOMEM;
++	p->time_in_state = temp;
++	memset(p->time_in_state + p->max_state, 0,
++	       (max_state - p->max_state) * sizeof(u64));
++	p->max_state = max_state;
++	return 0;
++}
++
++void cpufreq_task_times_exit(struct task_struct *p)
++{
++	unsigned long flags;
++	void *temp;
++
++	if (!p->time_in_state)
++		return;
++
++	spin_lock_irqsave(&task_time_in_state_lock, flags);
++	temp = p->time_in_state;
++	p->time_in_state = NULL;
++	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
++	kfree(temp);
++}
++
++int proc_time_in_state_show(struct seq_file *m, struct pid_namespace *ns,
++	struct pid *pid, struct task_struct *p)
++{
++	unsigned int cpu, i;
++	u64 cputime;
++	unsigned long flags;
++	struct cpu_freqs *freqs;
++	struct cpu_freqs *last_freqs = NULL;
++
++	spin_lock_irqsave(&task_time_in_state_lock, flags);
++	for_each_possible_cpu(cpu) {
++		freqs = all_freqs[cpu];
++		if (!freqs || freqs == last_freqs)
++			continue;
++		last_freqs = freqs;
++
++		seq_printf(m, "cpu%u\n", cpu);
++		for (i = 0; i < freqs->max_state; i++) {
++			cputime = 0;
++			if (freqs->offset + i < p->max_state &&
++			    p->time_in_state)
++				cputime = p->time_in_state[freqs->offset + i];
++			seq_printf(m, "%u %lu\n", freqs->freq_table[i],
++				   (unsigned long)nsec_to_clock_t(cputime));
++		}
++	}
++	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
++	return 0;
++}
++
++void cpufreq_acct_update_power(struct task_struct *p, u64 cputime)
++{
++	unsigned long flags;
++	unsigned int state;
++	struct cpu_freqs *freqs = all_freqs[task_cpu(p)];
++
++	if (!freqs || is_idle_task(p) || p->flags & PF_EXITING)
++		return;
++
++	state = freqs->offset + READ_ONCE(freqs->last_index);
++
++	spin_lock_irqsave(&task_time_in_state_lock, flags);
++	if ((state < p->max_state || !cpufreq_task_times_realloc_locked(p)) &&
++	    p->time_in_state)
++		p->time_in_state[state] += cputime;
++	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
++}
++
++static int cpufreq_times_get_index(struct cpu_freqs *freqs, unsigned int freq)
++{
++	int index;
++        for (index = 0; index < freqs->max_state; ++index) {
++		if (freqs->freq_table[index] == freq)
++			return index;
++        }
++	return -1;
++}
++
++void cpufreq_times_create_policy(struct cpufreq_policy *policy)
++{
++	int cpu, index = 0;
++	unsigned int count = 0;
++	struct cpufreq_frequency_table *pos, *table;
++	struct cpu_freqs *freqs;
++	void *tmp;
++
++	if (all_freqs[policy->cpu])
++		return;
++
++	table = policy->freq_table;
++	if (!table)
++		return;
++
++	cpufreq_for_each_valid_entry(pos, table)
++		count++;
++
++	tmp =  kzalloc(sizeof(*freqs) + sizeof(freqs->freq_table[0]) * count,
++		       GFP_KERNEL);
++	if (!tmp)
++		return;
++
++	freqs = tmp;
++	freqs->max_state = count;
++
++	cpufreq_for_each_valid_entry(pos, table)
++		freqs->freq_table[index++] = pos->frequency;
++
++	index = cpufreq_times_get_index(freqs, policy->cur);
++	if (index >= 0)
++		WRITE_ONCE(freqs->last_index, index);
++
++	freqs->offset = next_offset;
++	WRITE_ONCE(next_offset, freqs->offset + count);
++	for_each_cpu(cpu, policy->related_cpus)
++		all_freqs[cpu] = freqs;
++}
++
++void cpufreq_times_record_transition(struct cpufreq_policy *policy,
++	unsigned int new_freq)
++{
++	int index;
++	struct cpu_freqs *freqs = all_freqs[policy->cpu];
++	if (!freqs)
++		return;
++
++	index = cpufreq_times_get_index(freqs, new_freq);
++	if (index >= 0)
++		WRITE_ONCE(freqs->last_index, index);
++}
+diff --git a/fs/proc/base.c b/fs/proc/base.c
+index 5e0e0ccd47aa..29f02dc22ad9 100644
+--- a/fs/proc/base.c
++++ b/fs/proc/base.c
+@@ -96,6 +96,7 @@
+ #include <linux/time_namespace.h>
+ #include <linux/resctrl.h>
+ #include <linux/cn_proc.h>
++#include <linux/cpufreq_times.h>
+ #include <trace/events/oom.h>
+ #include "internal.h"
+ #include "fd.h"
+@@ -3336,6 +3337,9 @@ static const struct pid_entry tgid_base_stuff[] = {
+ #ifdef CONFIG_LIVEPATCH
+ 	ONE("patch_state",  S_IRUSR, proc_pid_patch_state),
+ #endif
++#ifdef CONFIG_CPU_FREQ_TIMES
++	ONE("time_in_state", 0444, proc_time_in_state_show),
++#endif
+ #ifdef CONFIG_STACKLEAK_METRICS
+ 	ONE("stack_depth", S_IRUGO, proc_stack_depth),
+ #endif
+@@ -3687,6 +3691,9 @@ static const struct pid_entry tid_base_stuff[] = {
+ 	ONE("ksm_merging_pages",  S_IRUSR, proc_pid_ksm_merging_pages),
+ 	ONE("ksm_stat",  S_IRUSR, proc_pid_ksm_stat),
+ #endif
++#ifdef CONFIG_CPU_FREQ_TIMES
++	ONE("time_in_state", 0444, proc_time_in_state_show),
++#endif
+ };
+ 
+ static int proc_tid_base_readdir(struct file *file, struct dir_context *ctx)
+diff --git a/include/linux/cpufreq_times.h b/include/linux/cpufreq_times.h
+new file mode 100644
+index 000000000000..38272a5f3163
+--- /dev/null
++++ b/include/linux/cpufreq_times.h
+@@ -0,0 +1,42 @@
++/* drivers/cpufreq/cpufreq_times.c
++ *
++ * Copyright (C) 2018 Google, Inc.
++ *
++ * This software is licensed under the terms of the GNU General Public
++ * License version 2, as published by the Free Software Foundation, and
++ * may be copied, distributed, and modified under those terms.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ */
++
++#ifndef _LINUX_CPUFREQ_TIMES_H
++#define _LINUX_CPUFREQ_TIMES_H
++
++#include <linux/cpufreq.h>
++#include <linux/pid.h>
++
++#ifdef CONFIG_CPU_FREQ_TIMES
++void cpufreq_task_times_init(struct task_struct *p);
++void cpufreq_task_times_alloc(struct task_struct *p);
++void cpufreq_task_times_exit(struct task_struct *p);
++int proc_time_in_state_show(struct seq_file *m, struct pid_namespace *ns,
++			    struct pid *pid, struct task_struct *p);
++void cpufreq_acct_update_power(struct task_struct *p, u64 cputime);
++void cpufreq_times_create_policy(struct cpufreq_policy *policy);
++void cpufreq_times_record_transition(struct cpufreq_policy *policy,
++                                     unsigned int new_freq);
++#else
++static inline void cpufreq_task_times_init(struct task_struct *p) {}
++static inline void cpufreq_task_times_alloc(struct task_struct *p) {}
++static inline void cpufreq_task_times_exit(struct task_struct *p) {}
++static inline void cpufreq_acct_update_power(struct task_struct *p,
++					     u64 cputime) {}
++static inline void cpufreq_times_create_policy(struct cpufreq_policy *policy) {}
++static inline void cpufreq_times_record_transition(
++	struct cpufreq_policy *policy, unsigned int new_freq) {}
++#endif /* CONFIG_CPU_FREQ_TIMES */
++#endif /* _LINUX_CPUFREQ_TIMES_H */
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 385bd16c1a90..d283c6f1c685 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1019,6 +1019,10 @@ struct task_struct {
+ 	u64				stimescaled;
+ #endif
+ 	u64				gtime;
++#ifdef CONFIG_CPU_FREQ_TIMES
++	u64				*time_in_state;
++	unsigned int			max_state;
++#endif
+ 	struct prev_cputime		prev_cputime;
+ #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
+ 	struct vtime			vtime;
+diff --git a/kernel/fork.c b/kernel/fork.c
+index c0257cbee093..14cb9fc71064 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -97,6 +97,7 @@
+ #include <linux/io_uring.h>
+ #include <linux/bpf.h>
+ #include <linux/stackprotector.h>
++#include <linux/cpufreq_times.h>
+ 
+ #include <asm/pgalloc.h>
+ #include <linux/uaccess.h>
+@@ -538,6 +539,7 @@ void free_task(struct task_struct *tsk)
+ #ifdef CONFIG_SECCOMP
+ 	WARN_ON_ONCE(tsk->seccomp.filter);
+ #endif
++	cpufreq_task_times_exit(tsk);
+ 	release_user_cpus_ptr(tsk);
+ 	scs_release(tsk);
+ 
+@@ -2107,6 +2109,8 @@ static __latent_entropy struct task_struct *copy_process(
+ 		siginitsetinv(&p->blocked, sigmask(SIGKILL)|sigmask(SIGSTOP));
+ 	}
+ 
++	cpufreq_task_times_init(p);
++
+ 	p->set_child_tid = (clone_flags & CLONE_CHILD_SETTID) ? args->child_tid : NULL;
+ 	/*
+ 	 * Clear TID on mm_release()?
+@@ -2682,6 +2686,8 @@ pid_t kernel_clone(struct kernel_clone_args *args)
+ 	if (IS_ERR(p))
+ 		return PTR_ERR(p);
+ 
++	cpufreq_task_times_alloc(p);
++
+ 	/*
+ 	 * Do this prior waking up the new thread - the thread pointer
+ 	 * might get invalid after that point, if the thread exits quickly.
+diff --git a/kernel/sched/cputime.c b/kernel/sched/cputime.c
+index af7952f12e6c..9cea90961407 100644
+--- a/kernel/sched/cputime.c
++++ b/kernel/sched/cputime.c
+@@ -2,6 +2,7 @@
+ /*
+  * Simple CPU accounting cgroup controller
+  */
++#include <linux/cpufreq_times.h>
+ 
+ #ifdef CONFIG_VIRT_CPU_ACCOUNTING_NATIVE
+  #include <asm/cputime.h>
+@@ -133,6 +134,9 @@ void account_user_time(struct task_struct *p, u64 cputime)
+ 
+ 	/* Account for user time used */
+ 	acct_account_cputime(p);
++
++	/* Account power usage for user time */
++	cpufreq_acct_update_power(p, cputime);
+ }
+ 
+ /*
+@@ -177,6 +181,9 @@ void account_system_index_time(struct task_struct *p,
+ 
+ 	/* Account for system time used */
+ 	acct_account_cputime(p);
++
++	/* Account power usage for system time */
++	cpufreq_acct_update_power(p, cputime);
+ }
+ 
+ /*
+-- 
+2.34.1
+

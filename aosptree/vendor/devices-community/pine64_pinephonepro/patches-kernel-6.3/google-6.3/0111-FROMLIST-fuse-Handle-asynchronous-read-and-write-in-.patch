@@ -1,0 +1,160 @@
+From e2acb68e349d7cc5c93647daab22eb94edc7dbd6 Mon Sep 17 00:00:00 2001
+From: Alessio Balsini <balsini@google.com>
+Date: Mon, 25 Jan 2021 17:03:51 +0000
+Subject: [PATCH] FROMLIST: fuse: Handle asynchronous read and write in
+ passthrough
+
+Extend the passthrough feature by handling asynchronous IO both for read
+and write operations.
+
+When an AIO request is received, if the request targets a FUSE file with
+the passthrough functionality enabled, a new identical AIO request is
+created. The new request targets the lower file system file and gets
+assigned a special FUSE passthrough AIO completion callback.
+When the lower file system AIO request is completed, the FUSE
+passthrough AIO completion callback is executed and propagates the
+completion signal to the FUSE AIO request by triggering its completion
+callback as well.
+
+[CPNOTE: 21/05/21] Lee: Still fresh - hopefully this will land upstream soon
+
+Bug: 168023149
+Link: https://lore.kernel.org/lkml/20210125153057.3623715-7-balsini@android.com/
+Signed-off-by: Alessio Balsini <balsini@android.com>
+Change-Id: I47671ef36211102da6dd3ee8b2f226d1e6cd9d5c
+Signed-off-by: Alessio Balsini <balsini@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/fuse/passthrough.c | 89 +++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 78 insertions(+), 11 deletions(-)
+
+diff --git a/fs/fuse/passthrough.c b/fs/fuse/passthrough.c
+index 52041cd1a359..60113d566dd2 100644
+--- a/fs/fuse/passthrough.c
++++ b/fs/fuse/passthrough.c
+@@ -10,6 +10,11 @@
+ #define PASSTHROUGH_IOCB_MASK                                                  \
+ 	(IOCB_APPEND | IOCB_DSYNC | IOCB_HIPRI | IOCB_NOWAIT | IOCB_SYNC)
+ 
++struct fuse_aio_req {
++	struct kiocb iocb;
++	struct kiocb *iocb_fuse;
++};
++
+ static void fuse_copyattr(struct file *dst_file, struct file *src_file)
+ {
+ 	struct inode *dst = file_inode(dst_file);
+@@ -18,6 +23,32 @@ static void fuse_copyattr(struct file *dst_file, struct file *src_file)
+ 	i_size_write(dst, i_size_read(src));
+ }
+ 
++static void fuse_aio_cleanup_handler(struct fuse_aio_req *aio_req)
++{
++	struct kiocb *iocb = &aio_req->iocb;
++	struct kiocb *iocb_fuse = aio_req->iocb_fuse;
++
++	if (iocb->ki_flags & IOCB_WRITE) {
++		__sb_writers_acquired(file_inode(iocb->ki_filp)->i_sb,
++				      SB_FREEZE_WRITE);
++		file_end_write(iocb->ki_filp);
++		fuse_copyattr(iocb_fuse->ki_filp, iocb->ki_filp);
++	}
++
++	iocb_fuse->ki_pos = iocb->ki_pos;
++	kfree(aio_req);
++}
++
++static void fuse_aio_rw_complete(struct kiocb *iocb, long res)
++{
++	struct fuse_aio_req *aio_req =
++		container_of(iocb, struct fuse_aio_req, iocb);
++	struct kiocb *iocb_fuse = aio_req->iocb_fuse;
++
++	fuse_aio_cleanup_handler(aio_req);
++	iocb_fuse->ki_complete(iocb_fuse, res);
++}
++
+ ssize_t fuse_passthrough_read_iter(struct kiocb *iocb_fuse,
+ 				   struct iov_iter *iter)
+ {
+@@ -29,9 +60,24 @@ ssize_t fuse_passthrough_read_iter(struct kiocb *iocb_fuse,
+ 	if (!iov_iter_count(iter))
+ 		return 0;
+ 
+-	ret = vfs_iter_read(passthrough_filp, iter, &iocb_fuse->ki_pos,
+-			    iocb_to_rw_flags(iocb_fuse->ki_flags,
+-					     PASSTHROUGH_IOCB_MASK));
++	if (is_sync_kiocb(iocb_fuse)) {
++		ret = vfs_iter_read(passthrough_filp, iter, &iocb_fuse->ki_pos,
++				    iocb_to_rw_flags(iocb_fuse->ki_flags,
++						     PASSTHROUGH_IOCB_MASK));
++	} else {
++		struct fuse_aio_req *aio_req;
++
++		aio_req = kmalloc(sizeof(struct fuse_aio_req), GFP_KERNEL);
++		if (!aio_req)
++			return -ENOMEM;
++
++		aio_req->iocb_fuse = iocb_fuse;
++		kiocb_clone(&aio_req->iocb, iocb_fuse, passthrough_filp);
++		aio_req->iocb.ki_complete = fuse_aio_rw_complete;
++		ret = call_read_iter(passthrough_filp, &aio_req->iocb, iter);
++		if (ret != -EIOCBQUEUED)
++			fuse_aio_cleanup_handler(aio_req);
++	}
+ 
+ 	return ret;
+ }
+@@ -44,20 +90,41 @@ ssize_t fuse_passthrough_write_iter(struct kiocb *iocb_fuse,
+ 	struct fuse_file *ff = fuse_filp->private_data;
+ 	struct inode *fuse_inode = file_inode(fuse_filp);
+ 	struct file *passthrough_filp = ff->passthrough.filp;
++	struct inode *passthrough_inode = file_inode(passthrough_filp);
+ 
+ 	if (!iov_iter_count(iter))
+ 		return 0;
+ 
+ 	inode_lock(fuse_inode);
+ 
+-	file_start_write(passthrough_filp);
+-	ret = vfs_iter_write(passthrough_filp, iter, &iocb_fuse->ki_pos,
+-			     iocb_to_rw_flags(iocb_fuse->ki_flags,
+-					      PASSTHROUGH_IOCB_MASK));
+-	file_end_write(passthrough_filp);
+-	if (ret > 0)
+-		fuse_copyattr(fuse_filp, passthrough_filp);
+-
++	if (is_sync_kiocb(iocb_fuse)) {
++		file_start_write(passthrough_filp);
++		ret = vfs_iter_write(passthrough_filp, iter, &iocb_fuse->ki_pos,
++				     iocb_to_rw_flags(iocb_fuse->ki_flags,
++						      PASSTHROUGH_IOCB_MASK));
++		file_end_write(passthrough_filp);
++		if (ret > 0)
++			fuse_copyattr(fuse_filp, passthrough_filp);
++	} else {
++		struct fuse_aio_req *aio_req;
++
++		aio_req = kmalloc(sizeof(struct fuse_aio_req), GFP_KERNEL);
++		if (!aio_req) {
++			ret = -ENOMEM;
++			goto out;
++		}
++
++		file_start_write(passthrough_filp);
++		__sb_writers_release(passthrough_inode->i_sb, SB_FREEZE_WRITE);
++
++		aio_req->iocb_fuse = iocb_fuse;
++		kiocb_clone(&aio_req->iocb, iocb_fuse, passthrough_filp);
++		aio_req->iocb.ki_complete = fuse_aio_rw_complete;
++		ret = call_write_iter(passthrough_filp, &aio_req->iocb, iter);
++		if (ret != -EIOCBQUEUED)
++			fuse_aio_cleanup_handler(aio_req);
++	}
++out:
+ 	inode_unlock(fuse_inode);
+ 
+ 	return ret;
+-- 
+2.34.1
+

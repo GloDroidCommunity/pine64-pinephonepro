@@ -1,0 +1,55 @@
+From a70f3266bc1736f8217ef717f56b0850840357f0 Mon Sep 17 00:00:00 2001
+From: Nick Desaulniers <ndesaulniers@google.com>
+Date: Tue, 31 May 2022 14:52:00 -0700
+Subject: [PATCH] ANDROID: uapi: icmp: Bionic compat with __unused
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Building CONFIG_UAPI_HEADER_TEST=y with a Bionic (Android's libc) based
+sysroot produces the following warning:
+
+In file included from <built-in>:1:
+./usr/include/linux/icmp.h:100:3: warning: declaration does not declare
+anything [-Wmissing-declarations]
+__be16  __unused;
+^~~~~~
+
+This is because Bionic defines __unused to expand to
+__attribute__((__unused__)). Bionic pre-processes kernel headers and
+redefines __unused to __linux_unused.
+
+Do so here to avoid issues that only appear for Bionic based sysroot
+UAPI header tests.
+
+Link: https://android.googlesource.com/platform/bionic/+/4ebdeebef74ffa09fe8176f73b32d5a21f4be4ae/libc/include/sys/cdefs.h#95
+Link: https://android.googlesource.com/platform/bionic/+/4ebdeebef74ffa09fe8176f73b32d5a21f4be4ae/libc/kernel/tools/defaults.py#70
+Bug: 190019968
+Bug: 234125788
+Reported-by: Matthias Männich<maennich@google.com>
+Signed-off-by: Nick Desaulniers <ndesaulniers@google.com>
+Change-Id: I2341953cbfce8e28b982c34df2df4b3b364d63a6
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/uapi/linux/icmp.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/include/uapi/linux/icmp.h b/include/uapi/linux/icmp.h
+index 163c0998aec9..d3242d586e65 100644
+--- a/include/uapi/linux/icmp.h
++++ b/include/uapi/linux/icmp.h
+@@ -97,7 +97,11 @@ struct icmphdr {
+ 	} echo;
+ 	__be32	gateway;
+ 	struct {
++#ifdef __BIONIC__
++		__be16	__linux_unused;
++#else
+ 		__be16	__unused;
++#endif
+ 		__be16	mtu;
+ 	} frag;
+ 	__u8	reserved[4];
+-- 
+2.34.1
+

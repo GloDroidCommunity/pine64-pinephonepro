@@ -1,0 +1,24 @@
+From 5415cba044d7d36888106cd80768d92563ce02a1 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 14:00:54 -0700
+Subject: [PATCH] _____ANNOTATION: tty changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Change-Id: Id10ff4cd0881c02ec5d1e85e91d0ce97bebff11a
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index 2eda4ac4fb5b..065273a4637a 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -9,3 +9,4 @@ mm (memory management) changes
+ security changes
+ dma-buf changes
+ driver framework and misc driver changes
++tty changes
+-- 
+2.34.1
+

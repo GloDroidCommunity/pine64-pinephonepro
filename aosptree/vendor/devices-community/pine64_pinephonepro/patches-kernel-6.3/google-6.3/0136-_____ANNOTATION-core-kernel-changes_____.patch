@@ -1,0 +1,24 @@
+From e43faa52cef18b10941d0d2af339b49ec59d4469 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 14:00:14 -0700
+Subject: [PATCH] _____ANNOTATION: core kernel changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: I11fadbff099f89dc25e0726c9c3bbe9d0c624095
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index add586f8c40e..6e52e90ad401 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -1,3 +1,4 @@
+ pending upstream
+ binder changes
+ kbuild changes
++core kernel changes
+-- 
+2.34.1
+

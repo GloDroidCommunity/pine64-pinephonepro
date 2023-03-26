@@ -1,0 +1,81 @@
+From 5bfeb6192aa62006c51cfe0a408bd399b7f5e9e2 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Thu, 21 Oct 2021 11:54:27 -0700
+Subject: [PATCH] ANDROID: scsi: ufs: allow overriding the blk_crypto_profile
+
+Add UFSHCD_QUIRK_CUSTOM_CRYPTO_PROFILE which tells ufshcd-core that the
+host controller supports inline encryption, but it needs to initialize
+the crypto capabilities in a nonstandard way and/or it needs to override
+blk_crypto_ll_ops.  If enabled, the standard code won't initialize the
+blk_crypto_profile; ufs_hba_variant_ops::init() must do it instead.
+
+Note that it is permitted that the blk_crypto_profile has no keyslots.
+
+This is needed for FMP support, as well as for wrapped key support.
+
+This is a reworked version of a patch which was temporarily reverted by
+https://android-review.googlesource.com/c/kernel/common/+/1867368, and
+which originated from several ANDROID patches that were consolidated by
+https://android-review.googlesource.com/c/kernel/common-patches/+/1508579.
+
+Bug: 162257402
+Bug: 160883801
+Change-Id: I556a68cd2d11bd5a7353fefdc31920475a5e7425
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/ufs/core/ufshcd-crypto.c | 10 +++++++---
+ include/ufs/ufshcd.h             |  9 +++++++++
+ 2 files changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/ufs/core/ufshcd-crypto.c b/drivers/ufs/core/ufshcd-crypto.c
+index aac0e10bfcee..7d52a1564804 100644
+--- a/drivers/ufs/core/ufshcd-crypto.c
++++ b/drivers/ufs/core/ufshcd-crypto.c
+@@ -163,6 +163,9 @@ int ufshcd_hba_init_crypto_capabilities(struct ufs_hba *hba)
+ 	int err = 0;
+ 	enum blk_crypto_mode_num blk_mode_num;
+ 
++	if (hba->quirks & UFSHCD_QUIRK_CUSTOM_CRYPTO_PROFILE)
++		return 0;
++
+ 	/*
+ 	 * Don't use crypto if either the hardware doesn't advertise the
+ 	 * standard crypto capability bit *or* if the vendor specific driver
+@@ -232,9 +235,10 @@ void ufshcd_init_crypto(struct ufs_hba *hba)
+ 	if (!(hba->caps & UFSHCD_CAP_CRYPTO))
+ 		return;
+ 
+-	/* Clear all keyslots - the number of keyslots is (CFGC + 1) */
+-	for (slot = 0; slot < hba->crypto_capabilities.config_count + 1; slot++)
+-		ufshcd_clear_keyslot(hba, slot);
++	/* Clear all keyslots */
++	for (slot = 0; slot < hba->crypto_profile.num_slots; slot++)
++		hba->crypto_profile.ll_ops.keyslot_evict(&hba->crypto_profile,
++							 NULL, slot);
+ }
+ 
+ void ufshcd_crypto_register(struct ufs_hba *hba, struct request_queue *q)
+diff --git a/include/ufs/ufshcd.h b/include/ufs/ufshcd.h
+index e4b73eb4e6ec..ba31a0bff75a 100644
+--- a/include/ufs/ufshcd.h
++++ b/include/ufs/ufshcd.h
+@@ -617,6 +617,15 @@ enum ufshcd_quirks {
+ 	 */
+ 	UFSHCD_QUIRK_REINIT_AFTER_MAX_GEAR_SWITCH       = 1 << 19,
+ 
++	/*
++	 * This quirk needs to be enabled if the host controller supports inline
++	 * encryption, but it needs to initialize the crypto capabilities in a
++	 * nonstandard way and/or it needs to override blk_crypto_ll_ops.  If
++	 * enabled, the standard code won't initialize the blk_crypto_profile;
++	 * ufs_hba_variant_ops::init() must do it instead.
++	 */
++	UFSHCD_QUIRK_CUSTOM_CRYPTO_PROFILE		= 1 << 20,
++
+ 	/*
+ 	 * This quirk needs to be enabled if the host controller supports inline
+ 	 * encryption, but the CRYPTO_GENERAL_ENABLE bit is not implemented and
+-- 
+2.34.1
+

@@ -1,0 +1,79 @@
+From 23100cf398fb0fe7046d0e787c27b6f0739a79bb Mon Sep 17 00:00:00 2001
+From: Roman Stratiienko <r.stratiienko@gmail.com>
+Date: Wed, 29 Mar 2023 01:27:53 +0300
+Subject: [PATCH 7/7] rk3399-pinephone-pro: Light PPP green LED and vibrate ASAP
+ during boot This is a hack, but it works for now.
+
+Original patch author: Samuel Dionne-Riel
+
+Change-Id: I24e666459cceac5b6b48bc8c37256471780aeb42
+---
+ .../pinephone-pro-rk3399.c                    | 23 +++++++++++++++++++
+ configs/pinephone-pro-rk3399_defconfig        |  1 +
+ 2 files changed, 24 insertions(+)
+
+diff --git a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+index eb639cd0d0..98d4998aa1 100644
+--- a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
++++ b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+@@ -7,17 +7,23 @@
+ #include <common.h>
+ #include <dm.h>
+ #include <init.h>
++#include <spl_gpio.h>
+ #include <syscon.h>
+ #include <asm/io.h>
+ #include <asm/arch-rockchip/clock.h>
++#include <asm/arch-rockchip/gpio.h>
+ #include <asm/arch-rockchip/grf_rk3399.h>
+ #include <asm/arch-rockchip/hardware.h>
+ #include <asm/arch-rockchip/misc.h>
+ #include <power/regulator.h>
++#include <linux/delay.h>
+ 
+ #define GRF_IO_VSEL_BT565_SHIFT 0
+ #define PMUGRF_CON0_VSEL_SHIFT 8
+ 
++#define GPIO3_BASE	0xff788000
++#define GPIO4_BASE	0xff790000
++
+ #ifndef CONFIG_SPL_BUILD
+ int board_early_init_f(void)
+ {
+@@ -73,4 +79,21 @@ int misc_init_r(void)
+ 
+ 	return ret;
+ }
++
++void led_setup(void)
++{
++	struct rockchip_gpio_regs * const gpio3 = (void *)GPIO3_BASE;
++	struct rockchip_gpio_regs * const gpio4 = (void *)GPIO4_BASE;
++
++	// Light up the green LED
++	// <&gpio4 RK_PD5 GPIO_ACTIVE_HIGH>;
++	spl_gpio_output(gpio4, GPIO(BANK_D, 5), 1);
++
++	// Vibrate ASAP
++	// <&gpio3 RK_PB1 GPIO_ACTIVE_HIGH>;
++	spl_gpio_output(gpio3, GPIO(BANK_B, 1), 1);
++	mdelay(400); // 0.4s
++	spl_gpio_output(gpio3, GPIO(BANK_B, 1), 0);
++}
++
+ #endif
+diff --git a/configs/pinephone-pro-rk3399_defconfig b/configs/pinephone-pro-rk3399_defconfig
+index a7bf5c4e75..cd90819d9a 100644
+--- a/configs/pinephone-pro-rk3399_defconfig
++++ b/configs/pinephone-pro-rk3399_defconfig
+@@ -3,6 +3,7 @@ CONFIG_SKIP_LOWLEVEL_INIT=y
+ CONFIG_COUNTER_FREQUENCY=24000000
+ CONFIG_ARCH_ROCKCHIP=y
+ CONFIG_TEXT_BASE=0x00200000
++CONFIG_SPL_GPIO=y
+ CONFIG_NR_DRAM_BANKS=1
+ CONFIG_ENV_SIZE=0x8000
+ CONFIG_ENV_OFFSET=0x3F8000
+-- 
+2.34.1
+

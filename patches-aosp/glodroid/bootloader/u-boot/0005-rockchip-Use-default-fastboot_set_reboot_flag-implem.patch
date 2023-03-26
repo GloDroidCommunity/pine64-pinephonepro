@@ -1,0 +1,39 @@
+From 07907516d2ca8ab029c61f711cfe908be51f19ea Mon Sep 17 00:00:00 2001
+From: Roman Stratiienko <r.stratiienko@gmail.com>
+Date: Fri, 30 Apr 2021 10:53:12 +0300
+Subject: [PATCH 5/7] rockchip: Use default fastboot_set_reboot_flag
+ implementation
+
+Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
+---
+ arch/arm/mach-rockchip/board.c | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/arch/arm/mach-rockchip/board.c b/arch/arm/mach-rockchip/board.c
+index ebffb6c3ff..8e4070c210 100644
+--- a/arch/arm/mach-rockchip/board.c
++++ b/arch/arm/mach-rockchip/board.c
+@@ -306,20 +306,6 @@ int board_usb_init(int index, enum usb_init_type init)
+ 
+ #endif /* CONFIG_USB_GADGET */
+ 
+-#if IS_ENABLED(CONFIG_FASTBOOT)
+-int fastboot_set_reboot_flag(enum fastboot_reboot_reason reason)
+-{
+-	if (reason != FASTBOOT_REBOOT_REASON_BOOTLOADER)
+-		return -ENOTSUPP;
+-
+-	printf("Setting reboot to fastboot flag ...\n");
+-	/* Set boot mode to fastboot */
+-	writel(BOOT_FASTBOOT, CONFIG_ROCKCHIP_BOOT_MODE_REG);
+-
+-	return 0;
+-}
+-#endif
+-
+ #ifdef CONFIG_MISC_INIT_R
+ __weak int misc_init_r(void)
+ {
+-- 
+2.34.1
+

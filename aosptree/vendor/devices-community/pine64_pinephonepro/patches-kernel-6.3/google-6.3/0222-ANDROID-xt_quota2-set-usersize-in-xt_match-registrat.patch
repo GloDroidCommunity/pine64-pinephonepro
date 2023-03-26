@@ -1,0 +1,40 @@
+From 93f53668481c36c7394fcfbcc6d4cb820ca3df6f Mon Sep 17 00:00:00 2001
+From: Todd Kjos <tkjos@google.com>
+Date: Tue, 17 Aug 2021 14:23:28 -0700
+Subject: [PATCH] ANDROID: xt_quota2: set usersize in xt_match registration
+ object
+
+Explicitly set what is visible to userspace
+
+Bug: 196046570
+Test: passed netd test suites
+Signed-off-by: Todd Kjos <tkjos@google.com>
+Change-Id: Iacec0ef8ae290e01f1b60508d8abcd40a3653c83
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ net/netfilter/xt_quota2.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/net/netfilter/xt_quota2.c b/net/netfilter/xt_quota2.c
+index 35c25b1f7f5d..27acc866befb 100644
+--- a/net/netfilter/xt_quota2.c
++++ b/net/netfilter/xt_quota2.c
+@@ -343,6 +343,7 @@ static struct xt_match quota_mt2_reg[] __read_mostly = {
+ 		.match      = quota_mt2,
+ 		.destroy    = quota_mt2_destroy,
+ 		.matchsize  = sizeof(struct xt_quota_mtinfo2),
++		.usersize   = offsetof(struct xt_quota_mtinfo2, master),
+ 		.me         = THIS_MODULE,
+ 	},
+ 	{
+@@ -353,6 +354,7 @@ static struct xt_match quota_mt2_reg[] __read_mostly = {
+ 		.match      = quota_mt2,
+ 		.destroy    = quota_mt2_destroy,
+ 		.matchsize  = sizeof(struct xt_quota_mtinfo2),
++		.usersize   = offsetof(struct xt_quota_mtinfo2, master),
+ 		.me         = THIS_MODULE,
+ 	},
+ };
+-- 
+2.34.1
+

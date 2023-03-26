@@ -1,0 +1,36 @@
+From dab7e3ae904cc1b2cca1746b0bd0c6f2f486f933 Mon Sep 17 00:00:00 2001
+From: Alistair Delva <adelva@google.com>
+Date: Fri, 24 Jul 2020 13:51:48 -0700
+Subject: [PATCH] NOUPSTREAM: ANDROID: GKI: Don't compact fuse_req when
+ CONFIG_VIRTIO_FS=n
+
+Otherwise we cannot enable VIRTIO_FS downstream.
+
+[CPNOTE: 20/07/21] Lee: GKI code
+
+Bug: 161843089
+Change-Id: I317b8c425ab96a1bd484b85b41ce3cb036327117
+Signed-off-by: Alistair Delva <adelva@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/fuse/fuse_i.h | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/fs/fuse/fuse_i.h b/fs/fuse/fuse_i.h
+index d2399c5ad25f..c8e69256168b 100644
+--- a/fs/fuse/fuse_i.h
++++ b/fs/fuse/fuse_i.h
+@@ -383,10 +383,8 @@ struct fuse_req {
+ 	/** Used to wake up the task waiting for completion of request*/
+ 	wait_queue_head_t waitq;
+ 
+-#if IS_ENABLED(CONFIG_VIRTIO_FS)
+ 	/** virtio-fs's physically contiguous buffer for in and out args */
+ 	void *argbuf;
+-#endif
+ 
+ 	/** fuse_mount this request belongs to */
+ 	struct fuse_mount *fm;
+-- 
+2.34.1
+

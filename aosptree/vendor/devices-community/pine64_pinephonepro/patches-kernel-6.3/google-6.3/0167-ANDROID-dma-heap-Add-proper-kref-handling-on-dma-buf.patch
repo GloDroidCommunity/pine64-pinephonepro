@@ -1,0 +1,105 @@
+From 5a5f77709493f890fba9cca403d0f5b34275cb06 Mon Sep 17 00:00:00 2001
+From: John Stultz <john.stultz@linaro.org>
+Date: Sat, 25 Jul 2020 02:53:27 +0000
+Subject: [PATCH] ANDROID: dma-heap: Add proper kref handling on dma-buf heaps
+
+Add proper refcounting on the dma_heap structure.
+While existing heaps are built-in, we may eventually
+have heaps loaded from modules, and we'll need to be
+able to properly handle the references to the heaps
+
+Also moves minor tracking into the heap structure so
+we can properly free things.
+
+[CPNOTE: 06/07/21] Lee: Asked vendor for an update via the bug
+
+Cc: Sumit Semwal <sumit.semwal@linaro.org>
+Cc: Andrew F. Davis <afd@ti.com>
+Cc: Benjamin Gaignard <benjamin.gaignard@linaro.org>
+Cc: Liam Mark <lmark@codeaurora.org>
+Cc: Laura Abbott <labbott@kernel.org>
+Cc: Brian Starkey <Brian.Starkey@arm.com>
+Cc: Hridya Valsaraju <hridya@google.com>
+Cc: linux-media@vger.kernel.org
+Cc: dri-devel@lists.freedesktop.org
+Signed-off-by: John Stultz <john.stultz@linaro.org>
+Change-Id: I9f9e27f640c926882a639d6ad5dc3019d7e2c2b0
+Link: https://lore.kernel.org/lkml/20200725032633.125006-1-john.stultz@linaro.org/T/#u
+Bug: 154341375
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/dma-buf/dma-heap.c | 28 ++++++++++++++++++++++++++++
+ include/linux/dma-heap.h   |  6 ++++++
+ 2 files changed, 34 insertions(+)
+
+diff --git a/drivers/dma-buf/dma-heap.c b/drivers/dma-buf/dma-heap.c
+index ac7ad1c368e3..be24c4c52ff0 100644
+--- a/drivers/dma-buf/dma-heap.c
++++ b/drivers/dma-buf/dma-heap.c
+@@ -42,6 +42,7 @@ struct dma_heap {
+ 	dev_t heap_devt;
+ 	struct list_head list;
+ 	struct cdev heap_cdev;
++	struct kref refcount;
+ 	struct device *heap_dev;
+ };
+ 
+@@ -206,6 +207,32 @@ void *dma_heap_get_drvdata(struct dma_heap *heap)
+ 	return heap->priv;
+ }
+ 
++static void dma_heap_release(struct kref *ref)
++{
++	struct dma_heap *heap = container_of(ref, struct dma_heap, refcount);
++	int minor = MINOR(heap->heap_devt);
++
++	/* Note, we already holding the heap_list_lock here */
++	list_del(&heap->list);
++
++	device_destroy(dma_heap_class, heap->heap_devt);
++	cdev_del(&heap->heap_cdev);
++	xa_erase(&dma_heap_minors, minor);
++
++	kfree(heap);
++}
++
++void dma_heap_put(struct dma_heap *h)
++{
++	/*
++	 * Take the heap_list_lock now to avoid racing with code
++	 * scanning the list and then taking a kref.
++	 */
++	mutex_lock(&heap_list_lock);
++	kref_put(&h->refcount, dma_heap_release);
++	mutex_unlock(&heap_list_lock);
++}
++
+ /**
+  * dma_heap_get_dev() - get device struct for the heap
+  * @heap: DMA-Heap to retrieve device struct from
+@@ -250,6 +277,7 @@ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
+ 	if (!heap)
+ 		return ERR_PTR(-ENOMEM);
+ 
++	kref_init(&heap->refcount);
+ 	heap->name = exp_info->name;
+ 	heap->ops = exp_info->ops;
+ 	heap->priv = exp_info->priv;
+diff --git a/include/linux/dma-heap.h b/include/linux/dma-heap.h
+index 26f5a4574430..18535bab78c5 100644
+--- a/include/linux/dma-heap.h
++++ b/include/linux/dma-heap.h
+@@ -74,4 +74,10 @@ const char *dma_heap_get_name(struct dma_heap *heap);
+  */
+ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info);
+ 
++/**
++ * dma_heap_put - drops a reference to a dmabuf heaps, potentially freeing it
++ * @heap:		heap pointer
++ */
++void dma_heap_put(struct dma_heap *heap);
++
+ #endif /* _DMA_HEAPS_H */
+-- 
+2.34.1
+

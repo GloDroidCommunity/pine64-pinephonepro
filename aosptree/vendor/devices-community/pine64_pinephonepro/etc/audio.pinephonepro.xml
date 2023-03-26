@@ -1,0 +1,65 @@
+<audiohal>
+    <!-- Sources:
+	/usr/share/alsa/ucm2/codecs/rt5640
+	https://gitlab.com/pine64-org/pine64-alsa-ucm/-/blob/master/ucm2/PinePhonePro/PinePhonePro.conf
+    -->
+    <mixer name="PinePhonePro">
+        <init>
+	<ctl name="Class D SPK Ratio Control'" val="1.66x" />
+        </init>
+    </mixer>
+
+    <device name="speaker">
+        <path name="on">
+	<ctl name="DAC MIXL INF1 Switch" val="1" />
+	<ctl name='DAC MIXR INF1 Switch' val="1" />
+	<ctl name='Stereo DAC MIXL DAC L1 Switch' val="1" />
+	<ctl name='Stereo DAC MIXR DAC R1 Switch' val="1" />
+	<ctl name='Stereo DAC MIXL DAC L2 Switch' val="1" />
+	<ctl name='Stereo DAC MIXR DAC R2 Switch' val="1" />
+	<ctl name='SPK MIXL DAC L1 Switch' val="1" />
+	<ctl name='SPK MIXR DAC R1 Switch' val="1" />
+	<ctl name='SPOL MIX SPKVOL L Switch' val="1" />
+	<ctl name='SPOL MIX SPKVOL R Switch' val="0" />
+	<ctl name='Speaker Channel Switch' val="1" />
+	<ctl name='Speaker L Playback Switch' val="1" />
+	<ctl name='Speaker R Playback Switch' val="1" />
+	<ctl name='Speaker Playback Volume' val="35" />
+        </path>
+
+        <path name="off">
+	<ctl name='Speaker Channel Switch' val="0" />
+	<ctl name='Speaker L Playback Switch' val="0" />
+	<ctl name='Speaker R Playback Switch' val="0" />
+	<ctl name='Speaker Playback Volume' val="0" />
+        </path>
+    </device>
+    <device name="headset">
+        <path name="on">
+        <ctl name='DAC MIXL INF1 Switch' val="1" />
+        <ctl name='DAC MIXR INF1 Switch' val="1" />
+        <ctl name='Stereo DAC MIXL DAC L1 Switch' val="1" />
+        <ctl name='Stereo DAC MIXR DAC R1 Switch' val="1" />
+        <ctl name='Stereo DAC MIXL DAC L2 Switch' val="1" />
+        <ctl name='Stereo DAC MIXR DAC R2 Switch' val="1" />
+        <ctl name='HPO MIX HPVOL Switch' val="1" />
+        <ctl name='HP Channel Switch' val="1" />
+        <ctl name='Speaker Channel Switch' val="0" />
+        <ctl name='HP L Playback Switch' val="1" />
+        <ctl name='HP R Playback Switch' val="1" />
+        <ctl name='HP Playback Volume' val="29" />
+    </path>
+        <path name="off">
+        <ctl name='HP Channel Switch' val="0" />
+        <ctl name='HP L Playback Switch' val="0" />
+        <ctl name='HP R Playback Switch' val="0" />
+        <ctl name='HP Playback Volume' val="0" />
+    </path>
+    </device>
+
+    <stream type="pcm" dir="out" device="0" rate="48000">
+    </stream>
+
+    <stream type="pcm" dir="in" device="0" rate="48000">
+    </stream>
+</audiohal>

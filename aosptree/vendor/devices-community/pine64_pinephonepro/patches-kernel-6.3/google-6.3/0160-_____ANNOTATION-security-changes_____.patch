@@ -1,0 +1,24 @@
+From c5afc9c24fff50d72c3f52eaaa4920b8c1efb5cd Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 14:00:47 -0700
+Subject: [PATCH] _____ANNOTATION: security changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: I2f07540d1fbe7203340a3d26e82c6e32af05f46f
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index 7f0411027c5c..18ac0d266263 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -6,3 +6,4 @@ power management changes
+ scheduler changes
+ cpufreq changes
+ mm (memory management) changes
++security changes
+-- 
+2.34.1
+

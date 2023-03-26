@@ -1,0 +1,133 @@
+From 696fce094dc61132667e9db27bfffdff462ba6b9 Mon Sep 17 00:00:00 2001
+From: John Stultz <john.stultz@linaro.org>
+Date: Thu, 7 May 2020 20:08:13 +0000
+Subject: [PATCH] ONHOLD: FROMLIST: dma-buf: dma-heap: Keep track of the heap
+ device struct
+
+Keep track of the heap device struct.
+
+This will be useful for special DMA allocations
+and actions.
+
+[CPNOTE: 21/05/21] Lee: Requested status from John on the MLs
+[CPNOTE: 26/05/21] Lee: No upstream user presently
+
+Signed-off-by: John Stultz <john.stultz@linaro.org>
+Link: https://lore.kernel.org/lkml/20201110034934.70898-7-john.stultz@linaro.org/
+Bug: 170887642
+Change-Id: I55b8df5fd9fd46795a8f0171318895297d2dd379
+Signed-off-by: Hridya Valsaraju <hridya@google.com>
+(cherry picked from commit 2501fd6245d8a1a408c7871c0fc8eb9e0116c944)
+Signed-off-by: Palmer Dabbelt <palmerdabbelt@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/dma-buf/dma-heap.c | 33 +++++++++++++++++++++++++--------
+ include/linux/dma-heap.h   |  9 +++++++++
+ 2 files changed, 34 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/dma-buf/dma-heap.c b/drivers/dma-buf/dma-heap.c
+index c9e41e8a9e27..ac7ad1c368e3 100644
+--- a/drivers/dma-buf/dma-heap.c
++++ b/drivers/dma-buf/dma-heap.c
+@@ -31,6 +31,7 @@
+  * @heap_devt		heap device node
+  * @list		list head connecting to list of heaps
+  * @heap_cdev		heap char device
++ * @heap_dev		heap device struct
+  *
+  * Represents a heap of memory from which buffers can be made.
+  */
+@@ -41,6 +42,7 @@ struct dma_heap {
+ 	dev_t heap_devt;
+ 	struct list_head list;
+ 	struct cdev heap_cdev;
++	struct device *heap_dev;
+ };
+ 
+ static LIST_HEAD(heap_list);
+@@ -204,6 +206,18 @@ void *dma_heap_get_drvdata(struct dma_heap *heap)
+ 	return heap->priv;
+ }
+ 
++/**
++ * dma_heap_get_dev() - get device struct for the heap
++ * @heap: DMA-Heap to retrieve device struct from
++ *
++ * Returns:
++ * The device struct for the heap.
++ */
++struct device *dma_heap_get_dev(struct dma_heap *heap)
++{
++	return heap->heap_dev;
++}
++
+ /**
+  * dma_heap_get_name() - get heap name
+  * @heap: DMA-Heap to retrieve private data for
+@@ -219,7 +233,6 @@ const char *dma_heap_get_name(struct dma_heap *heap)
+ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
+ {
+ 	struct dma_heap *heap, *h, *err_ret;
+-	struct device *dev_ret;
+ 	unsigned int minor;
+ 	int ret;
+ 
+@@ -261,17 +274,20 @@ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
+ 		goto err1;
+ 	}
+ 
+-	dev_ret = device_create(dma_heap_class,
+-				NULL,
+-				heap->heap_devt,
+-				NULL,
+-				heap->name);
+-	if (IS_ERR(dev_ret)) {
++	heap->heap_dev = device_create(dma_heap_class,
++				       NULL,
++				       heap->heap_devt,
++				       NULL,
++				       heap->name);
++	if (IS_ERR(heap->heap_dev)) {
+ 		pr_err("dma_heap: Unable to create device\n");
+-		err_ret = ERR_CAST(dev_ret);
++		err_ret = ERR_CAST(heap->heap_dev);
+ 		goto err2;
+ 	}
+ 
++	/* Make sure it doesn't disappear on us */
++	heap->heap_dev = get_device(heap->heap_dev);
++
+ 	mutex_lock(&heap_list_lock);
+ 	/* check the name is unique */
+ 	list_for_each_entry(h, &heap_list, list) {
+@@ -280,6 +296,7 @@ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
+ 			pr_err("dma_heap: Already registered heap named %s\n",
+ 			       exp_info->name);
+ 			err_ret = ERR_PTR(-EINVAL);
++			put_device(heap->heap_dev);
+ 			goto err3;
+ 		}
+ 	}
+diff --git a/include/linux/dma-heap.h b/include/linux/dma-heap.h
+index 0c05561cad6e..26f5a4574430 100644
+--- a/include/linux/dma-heap.h
++++ b/include/linux/dma-heap.h
+@@ -50,6 +50,15 @@ struct dma_heap_export_info {
+  */
+ void *dma_heap_get_drvdata(struct dma_heap *heap);
+ 
++/**
++ * dma_heap_get_dev() - get device struct for the heap
++ * @heap: DMA-Heap to retrieve device struct from
++ *
++ * Returns:
++ * The device struct for the heap.
++ */
++struct device *dma_heap_get_dev(struct dma_heap *heap);
++
+ /**
+  * dma_heap_get_name() - get heap name
+  * @heap: DMA-Heap to retrieve private data for
+-- 
+2.34.1
+

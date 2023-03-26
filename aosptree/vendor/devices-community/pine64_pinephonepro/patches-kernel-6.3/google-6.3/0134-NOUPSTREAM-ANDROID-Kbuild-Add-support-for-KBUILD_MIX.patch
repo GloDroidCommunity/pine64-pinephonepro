@@ -1,0 +1,332 @@
+From 229837bbfed922038b96fddb3d8b911452adbf05 Mon Sep 17 00:00:00 2001
+From: Elliot Berman <eberman@codeaurora.org>
+Date: Wed, 7 Apr 2021 08:03:11 -0700
+Subject: [PATCH] NOUPSTREAM: ANDROID: Kbuild: Add support for
+ KBUILD_MIXED_TREE
+
+When KBUILD_MIXED_TREE points to the output folder of another kernel's
+build output, Kbuild can compile a complete kernel tree's modules
+against that other kernel tree's vmlinux. This is useful when two
+kernel trees exist: a "Generic Kernel Image" tree and a "device kernel"
+tree.  Both trees are complete kernel source trees, and the "Generic
+Kernel Image" should provide the kernel Image and device kernel tree
+provides device driver modules.
+
+To accomplish this, references to vmlinux.symvers in the device kernel
+should point to the generic kernel's vmlinux.symvers and the device
+kernel should skip compilation of built-in files.
+
+[CPNOTE: 03/06/21] Lee: Not suitable for Mainline
+
+Squash:
+  ANDROID: Add clang-tidy/clang-analyzer support for mixed build environment
+
+Bug: 178469391
+Bug: 233781076
+Change-Id: I614f3e87519236c4e2c5da74937cb0ecd98a278a
+Signed-off-by: Elliot Berman <eberman@codeaurora.org>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ Makefile                  | 32 +++++++++++++++++++++++++-------
+ arch/arm64/Makefile       |  3 +++
+ arch/x86/Makefile         |  3 +++
+ scripts/Makefile.modfinal | 14 ++++++++------
+ scripts/Makefile.modpost  | 39 +++++++++++++++++++++++++++++++++++++++
+ scripts/depmod.sh         |  9 +++++----
+ 6 files changed, 83 insertions(+), 17 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 523618f29ab7..c32cea0362c5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -151,6 +151,20 @@ endif
+ 
+ export KBUILD_EXTMOD
+ 
++# ANDROID: set up mixed-build support. mixed-build allows device kernel modules
++# to be compiled against a GKI kernel. This approach still uses the headers and
++# Kbuild from device kernel, so care must be taken to ensure that those headers match.
++ifdef KBUILD_MIXED_TREE
++# Need vmlinux.symvers for modpost and System.map for depmod, check whether they exist in KBUILD_MIXED_TREE
++required_mixed_files=vmlinux.symvers System.map
++$(if $(filter-out $(words $(required_mixed_files)), \
++		$(words $(wildcard $(add-prefix $(KBUILD_MIXED_TREE)/,$(required_mixed_files))))),,\
++	$(error KBUILD_MIXED_TREE=$(KBUILD_MIXED_TREE) doesn't contain $(required_mixed_files)))
++endif
++
++mixed-build-prefix = $(if $(KBUILD_MIXED_TREE),$(KBUILD_MIXED_TREE)/)
++export KBUILD_MIXED_TREE
++
+ # Kbuild will save output files in the current working directory.
+ # This does not need to match to the root of the kernel source tree.
+ #
+@@ -743,11 +757,13 @@ drivers-y	:=
+ libs-y		:= lib/
+ endif # KBUILD_EXTMOD
+ 
++ifndef KBUILD_MIXED_TREE
+ # The all: target is the default when no target is given on the
+ # command line.
+ # This allow a user to issue only 'make' to build a kernel including modules
+ # Defaults to vmlinux, but the arch makefile usually adds further targets
+ all: vmlinux
++endif
+ 
+ CFLAGS_GCOV	:= -fprofile-arcs -ftest-coverage
+ ifdef CONFIG_CC_IS_GCC
+@@ -1265,6 +1281,7 @@ targets += vmlinux.a
+ vmlinux.a: $(KBUILD_VMLINUX_OBJS) scripts/head-object-list.txt autoksyms_recursive FORCE
+ 	$(call if_changed,ar_vmlinux.a)
+ 
++ifndef KBUILD_MIXED_TREE
+ PHONY += vmlinux_o
+ vmlinux_o: vmlinux.a $(KBUILD_VMLINUX_LIBS)
+ 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.vmlinux_o
+@@ -1287,6 +1304,7 @@ vmlinux: private _LDFLAGS_vmlinux := $(LDFLAGS_vmlinux)
+ vmlinux: export LDFLAGS_vmlinux = $(_LDFLAGS_vmlinux)
+ vmlinux: vmlinux.o $(KBUILD_LDS) modpost
+ 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.vmlinux
++endif
+ 
+ # The actual objects are generated when descending,
+ # make sure no implicit rule kicks in
+@@ -1551,7 +1569,7 @@ endif
+ # is an exception.
+ ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+ KBUILD_BUILTIN := 1
+-modules: vmlinux
++modules: $(mixed-build-prefix)vmlinux
+ endif
+ 
+ modules: modules_prepare
+@@ -1591,8 +1609,8 @@ __modinst_pre:
+ 		ln -s $(CURDIR) $(MODLIB)/build ; \
+ 	fi
+ 	@sed 's:^\(.*\)\.o$$:kernel/\1.ko:' modules.order > $(MODLIB)/modules.order
+-	@cp -f modules.builtin $(MODLIB)/
+-	@cp -f $(objtree)/modules.builtin.modinfo $(MODLIB)/
++	@cp -f $(mixed-build-prefix)modules.builtin $(MODLIB)/
++	@cp -f $(or $(mixed-build-prefix),$(objtree)/)modules.builtin.modinfo $(MODLIB)/
+ 
+ endif # CONFIG_MODULES
+ 
+@@ -1964,7 +1982,7 @@ modules_check: $(MODORDER)
+ 
+ quiet_cmd_depmod = DEPMOD  $(MODLIB)
+       cmd_depmod = $(CONFIG_SHELL) $(srctree)/scripts/depmod.sh $(DEPMOD) \
+-                   $(KERNELRELEASE)
++                   $(KERNELRELEASE) $(mixed-build-prefix)
+ 
+ modules_install:
+ 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modinst
+@@ -1988,7 +2006,7 @@ KBUILD_MODULES :=
+ endif # CONFIG_MODULES
+ 
+ PHONY += modpost
+-modpost: $(if $(single-build),, $(if $(KBUILD_BUILTIN), vmlinux.o)) \
++modpost: $(if $(single-build),, $(if $(KBUILD_MIXED_TREE),,$(if $(KBUILD_BUILTIN), vmlinux.o))) \
+ 	 $(if $(KBUILD_MODULES), modules_check)
+ 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
+ 
+@@ -2038,7 +2056,7 @@ endif
+ # Error messages still appears in the original language
+ PHONY += $(build-dir)
+ $(build-dir): prepare
+-	$(Q)$(MAKE) $(build)=$@ need-builtin=1 need-modorder=1 $(single-goals)
++	$(Q)$(MAKE) $(build)=$@ $(if $(KBUILD_MIXED_TREE),,need-builtin=1) need-modorder=1 $(single-goals)
+ 
+ clean-dirs := $(addprefix _clean_, $(clean-dirs))
+ PHONY += $(clean-dirs) clean
+@@ -2089,7 +2107,7 @@ quiet_cmd_gen_compile_commands = GEN     $@
+       cmd_gen_compile_commands = $(PYTHON3) $< -a $(AR) -o $@ $(filter-out $<, $(real-prereqs))
+ 
+ $(extmod_prefix)compile_commands.json: scripts/clang-tools/gen_compile_commands.py \
+-	$(if $(KBUILD_EXTMOD),, vmlinux.a $(KBUILD_VMLINUX_LIBS)) \
++	$(if $(KBUILD_EXTMOD)$(KBUILD_MIXED_TREE),, vmlinux.a $(KBUILD_VMLINUX_LIBS)) \
+ 	$(if $(CONFIG_MODULES), $(MODORDER)) FORCE
+ 	$(call if_changed,gen_compile_commands)
+ 
+diff --git a/arch/arm64/Makefile b/arch/arm64/Makefile
+index 2d49aea0ff67..775bea8bd965 100644
+--- a/arch/arm64/Makefile
++++ b/arch/arm64/Makefile
+@@ -156,7 +156,10 @@ else
+ KBUILD_IMAGE	:= $(boot)/vmlinuz.efi
+ endif
+ 
++# Don't compile Image in mixed build with "all" target
++ifndef KBUILD_MIXED_TREE
+ all:	$(notdir $(KBUILD_IMAGE))
++endif
+ 
+ 
+ Image vmlinuz.efi: vmlinux
+diff --git a/arch/x86/Makefile b/arch/x86/Makefile
+index b39975977c03..253995da87f5 100644
+--- a/arch/x86/Makefile
++++ b/arch/x86/Makefile
+@@ -270,8 +270,11 @@ BOOT_TARGETS = bzdisk fdimage fdimage144 fdimage288 hdimage isoimage
+ 
+ PHONY += bzImage $(BOOT_TARGETS)
+ 
++# Don't compile Image in mixed build with "all" target
++ifndef KBUILD_MIXED_TREE
+ # Default kernel to build
+ all: bzImage
++endif
+ 
+ # KBUILD_IMAGE specify target image being built
+ KBUILD_IMAGE := $(boot)/bzImage
+diff --git a/scripts/Makefile.modfinal b/scripts/Makefile.modfinal
+index 4703f652c009..f08c2ee4967d 100644
+--- a/scripts/Makefile.modfinal
++++ b/scripts/Makefile.modfinal
+@@ -12,6 +12,8 @@ include $(srctree)/scripts/Kbuild.include
+ # for c_flags
+ include $(srctree)/scripts/Makefile.lib
+ 
++mixed-build-prefix = $(if $(KBUILD_MIXED_TREE),$(KBUILD_MIXED_TREE)/)
++
+ # find all modules listed in modules.order
+ modules := $(call read-file, $(MODORDER))
+ 
+@@ -39,13 +41,13 @@ quiet_cmd_ld_ko_o = LD [M]  $@
+ 
+ quiet_cmd_btf_ko = BTF [M] $@
+       cmd_btf_ko = 							\
+-	if [ ! -f vmlinux ]; then					\
+-		printf "Skipping BTF generation for %s due to unavailability of vmlinux\n" $@ 1>&2; \
++	if [ ! -f $(mixed-build-prefix)vmlinux ]; then					\
++		printf "Skipping BTF generation for %s due to unavailability of $(mixed-build-prefix)vmlinux\n" $@ 1>&2; \
+ 	elif [ -n "$(CONFIG_RUST)" ] && $(srctree)/scripts/is_rust_module.sh $@; then 		\
+ 		printf "Skipping BTF generation for %s because it's a Rust module\n" $@ 1>&2; \
+ 	else								\
+-		LLVM_OBJCOPY="$(OBJCOPY)" $(PAHOLE) -J $(PAHOLE_FLAGS) --btf_base vmlinux $@; \
+-		$(RESOLVE_BTFIDS) -b vmlinux $@; 			\
++		LLVM_OBJCOPY="$(OBJCOPY)" $(PAHOLE) -J $(PAHOLE_FLAGS) --btf_base $(mixed-build-prefix)vmlinux $@; \
++		$(RESOLVE_BTFIDS) -b $(mixed-build-prefix)vmlinux $@; 			\
+ 	fi;
+ 
+ # Same as newer-prereqs, but allows to exclude specified extra dependencies
+@@ -57,8 +59,8 @@ if_changed_except = $(if $(call newer_prereqs_except,$(2))$(cmd-check),      \
+ 	printf '%s\n' 'savedcmd_$@ := $(make-cmd)' > $(dot-target).cmd, @:)
+ 
+ # Re-generate module BTFs if either module's .ko or vmlinux changed
+-%.ko: %.o %.mod.o scripts/module.lds $(and $(CONFIG_DEBUG_INFO_BTF_MODULES),$(KBUILD_BUILTIN),vmlinux) FORCE
+-	+$(call if_changed_except,ld_ko_o,vmlinux)
++%.ko: %.o %.mod.o scripts/module.lds $(and $(CONFIG_DEBUG_INFO_BTF_MODULES),$(KBUILD_BUILTIN),$(mixed-build-prefix)vmlinux) FORCE
++	+$(call if_changed_except,ld_ko_o,$(mixed-build-prefix)vmlinux)
+ ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+ 	+$(if $(newer-prereqs),$(call cmd,btf_ko))
+ endif
+diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
+index 0980c58d8afc..931a3272a4ba 100644
+--- a/scripts/Makefile.modpost
++++ b/scripts/Makefile.modpost
+@@ -38,6 +38,8 @@ __modpost:
+ include include/config/auto.conf
+ include $(srctree)/scripts/Kbuild.include
+ 
++mixed-build-prefix = $(if $(KBUILD_MIXED_TREE),$(KBUILD_MIXED_TREE)/)
++
+ MODPOST = scripts/mod/modpost
+ 
+ modpost-args =										\
+@@ -70,8 +72,10 @@ ifeq ($(KBUILD_EXTMOD),)
+ 
+ # This is used to retrieve symbol versions generated by genksyms.
+ ifdef CONFIG_MODVERSIONS
++ifndef KBUILD_MIXED_TREE
+ vmlinux.symvers Module.symvers: .vmlinux.objs
+ endif
++endif
+ 
+ # Ignore libgcc.a
+ # Some architectures do '$(CC) --print-libgcc-file-name' to borrow libgcc.a
+@@ -86,9 +90,17 @@ quiet_cmd_vmlinux_objs = GEN     $@
+ 		esac			\
+ 	done > $@
+ 
++quiet_cmd_vmlinux_symvers = GEN     $@
++      cmd_vmlinux_symvers = grep "\<vmlinux\s\+EXPORT" $< > $@
++
++quiet_cmd_cat_symvers = GEN     $@
++      cmd_cat_symvers = cat $(real-prereqs) > $@
++
++ifndef KBUILD_MIXED_TREE
+ targets += .vmlinux.objs
+ .vmlinux.objs: vmlinux.a $(KBUILD_VMLINUX_LIBS) FORCE
+ 	$(call if_changed,vmlinux_objs)
++endif
+ 
+ ifeq ($(wildcard vmlinux.o),)
+ missing-input := vmlinux.o
+@@ -99,6 +111,33 @@ modpost-deps += vmlinux.o
+ output-symdump := $(if $(KBUILD_MODULES), Module.symvers, vmlinux.symvers)
+ endif
+ 
++ifdef KBUILD_MODULES
++targets += vmlinux.symvers
++vmlinux.symvers: Module.symvers FORCE
++	$(call if_changed,vmlinux_symvers)
++
++__modpost: $(if $(wildcard vmlinux.o),vmlinux.symvers,)
++endif
++
++# Overwrite values for mixed building (overwritting makes merges easier)
++ifdef KBUILD_MIXED_TREE
++targets += Module.symvers
++Module.symvers: $(mixed-build-prefix)vmlinux.symvers modules-only.symvers FORCE
++	$(call if_changed,cat_symvers)
++
++__modpost: Module.symvers
++
++ifeq ($(wildcard $(mixed-build-prefix)vmlinux.symvers),)
++missing-input := $(mixed-build-prefix)vmlinux.symvers
++else
++missing-input :=
++modpost-args += $(addprefix -i ,$(wildcard $(mixed-build-prefix)vmlinux.symvers))
++endif
++# Note: we don't want to include the vmlinux symbols here because we want to be
++# sure we only use the vmlinux symbols from the GKI kernel.
++output-symdump := modules-only.symvers
++endif
++
+ else
+ 
+ # set src + obj - they may be used in the modules's Makefile
+diff --git a/scripts/depmod.sh b/scripts/depmod.sh
+index 3643b4f896ed..2de598d4691a 100755
+--- a/scripts/depmod.sh
++++ b/scripts/depmod.sh
+@@ -3,14 +3,15 @@
+ #
+ # A depmod wrapper used by the toplevel Makefile
+ 
+-if test $# -ne 2; then
+-	echo "Usage: $0 /sbin/depmod <kernelrelease>" >&2
++if test $# -ne 2 -a $# -ne 3; then
++	echo "Usage: $0 /sbin/depmod <kernelrelease> [System.map folder]" >&2
+ 	exit 1
+ fi
+ DEPMOD=$1
+ KERNELRELEASE=$2
++KBUILD_MIXED_TREE=$3
+ 
+-if ! test -r System.map ; then
++if ! test -r ${KBUILD_MIXED_TREE}System.map ; then
+ 	echo "Warning: modules_install: missing 'System.map' file. Skipping depmod." >&2
+ 	exit 0
+ fi
+@@ -41,7 +42,7 @@ if $depmod_hack_needed; then
+ 	KERNELRELEASE=99.98.$KERNELRELEASE
+ fi
+ 
+-set -- -ae -F System.map
++set -- -ae -F ${KBUILD_MIXED_TREE}System.map
+ if test -n "$INSTALL_MOD_PATH"; then
+ 	set -- "$@" -b "$INSTALL_MOD_PATH"
+ fi
+-- 
+2.34.1
+

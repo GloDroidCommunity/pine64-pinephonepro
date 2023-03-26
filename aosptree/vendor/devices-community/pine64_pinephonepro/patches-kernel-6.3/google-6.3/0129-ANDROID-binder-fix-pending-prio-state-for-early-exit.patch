@@ -1,0 +1,43 @@
+From 2c5168ca6f26a59fcab42151911f9c1f8a3b63b7 Mon Sep 17 00:00:00 2001
+From: Carlos Llamas <cmllamas@google.com>
+Date: Fri, 22 Jul 2022 01:19:38 +0000
+Subject: [PATCH] ANDROID: binder: fix pending prio state for early exit
+
+When calling binder_do_set_priority() with the same policy and priority
+values as the current task, we exit early since there is nothing to do.
+However, the BINDER_PRIO_PENDING state might be set and in this case we
+fail to update it. A subsequent call to binder_transaction_priority()
+will then read an incorrect state and save the wrong priority. Fix this
+by setting thread->prio_state to BINDER_PRIO_SET on our way out.
+
+Bug: 199309216
+Fixes: cac827f2619b ("ANDROID: binder: fix race in priority restore")
+Signed-off-by: Carlos Llamas <cmllamas@google.com>
+Change-Id: I21e906cf4b2ebee908af41fe101ecd458ae1991c
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/android/binder.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/android/binder.c b/drivers/android/binder.c
+index f954fa4b50c8..885726e3d8fe 100644
+--- a/drivers/android/binder.c
++++ b/drivers/android/binder.c
+@@ -704,8 +704,13 @@ static void binder_do_set_priority(struct binder_thread *thread,
+ 	bool has_cap_nice;
+ 	unsigned int policy = desired->sched_policy;
+ 
+-	if (task->policy == policy && task->normal_prio == desired->prio)
++	if (task->policy == policy && task->normal_prio == desired->prio) {
++		spin_lock(&thread->prio_lock);
++		if (thread->prio_state == BINDER_PRIO_PENDING)
++			thread->prio_state = BINDER_PRIO_SET;
++		spin_unlock(&thread->prio_lock);
+ 		return;
++	}
+ 
+ 	has_cap_nice = has_capability_noaudit(task, CAP_SYS_NICE);
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,199 @@
+From 6f1896067bc746fa33b33083a02d83d28706d5cb Mon Sep 17 00:00:00 2001
+From: Pradeep P V K <quic_pragalla@quicinc.com>
+Date: Mon, 6 Dec 2021 14:16:45 +0530
+Subject: [PATCH] FROMLIST: fuse: give wakeup hints to the scheduler
+
+The synchronous wakeup interface is available only for the
+interruptible wakeup. Add it for normal wakeup and use this
+synchronous wakeup interface to wakeup the userspace daemon.
+Scheduler can make use of this hint to find a better CPU for
+the waker task.
+
+With this change the performance numbers for compress, decompress
+and copy use-cases on /sdcard path has improved by ~30%.
+
+Use-case details:
+1. copy 10000 files of each 4k size into /sdcard path
+2. use any File explorer application that has compress/decompress
+support
+3. start compress/decompress and capture the time.
+
+-------------------------------------------------
+| Default   | wakeup support | Improvement/Diff |
+-------------------------------------------------
+| 13.8 sec  | 9.9 sec        | 3.9 sec (28.26%) |
+-------------------------------------------------
+
+Co-developed-by: Pavankumar Kondeti <quic_pkondeti@quicinc.com>
+Signed-off-by: Pradeep P V K <quic_pragalla@quicinc.com>
+
+Bug: 216261533
+Link: https://lore.kernel.org/lkml/1638780405-38026-1-git-send-email-quic_pragalla@quicinc.com/
+Change-Id: I9ac89064e34b1e0605064bf4d2d3a310679cb605
+Signed-off-by: Pradeep P V K <quic_pragalla@quicinc.com>
+Signed-off-by: Alessio Balsini <balsini@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/fuse/dev.c        | 21 ++++++++++++---------
+ fs/fuse/fuse_i.h     |  6 +++---
+ fs/fuse/virtio_fs.c  |  8 +++++---
+ include/linux/wait.h |  1 +
+ 4 files changed, 21 insertions(+), 15 deletions(-)
+
+diff --git a/fs/fuse/dev.c b/fs/fuse/dev.c
+index 88f5c9ccfc71..1ccfb68cebb8 100644
+--- a/fs/fuse/dev.c
++++ b/fs/fuse/dev.c
+@@ -207,10 +207,13 @@ static unsigned int fuse_req_hash(u64 unique)
+ /*
+  * A new request is available, wake fiq->waitq
+  */
+-static void fuse_dev_wake_and_unlock(struct fuse_iqueue *fiq)
++static void fuse_dev_wake_and_unlock(struct fuse_iqueue *fiq, bool sync)
+ __releases(fiq->lock)
+ {
+-	wake_up(&fiq->waitq);
++	if (sync)
++		wake_up_sync(&fiq->waitq);
++	else
++		wake_up(&fiq->waitq);
+ 	kill_fasync(&fiq->fasync, SIGIO, POLL_IN);
+ 	spin_unlock(&fiq->lock);
+ }
+@@ -223,14 +226,14 @@ const struct fuse_iqueue_ops fuse_dev_fiq_ops = {
+ EXPORT_SYMBOL_GPL(fuse_dev_fiq_ops);
+ 
+ static void queue_request_and_unlock(struct fuse_iqueue *fiq,
+-				     struct fuse_req *req)
++				     struct fuse_req *req, bool sync)
+ __releases(fiq->lock)
+ {
+ 	req->in.h.len = sizeof(struct fuse_in_header) +
+ 		fuse_len_args(req->args->in_numargs,
+ 			      (struct fuse_arg *) req->args->in_args);
+ 	list_add_tail(&req->list, &fiq->pending);
+-	fiq->ops->wake_pending_and_unlock(fiq);
++	fiq->ops->wake_pending_and_unlock(fiq, sync);
+ }
+ 
+ void fuse_queue_forget(struct fuse_conn *fc, struct fuse_forget_link *forget,
+@@ -245,7 +248,7 @@ void fuse_queue_forget(struct fuse_conn *fc, struct fuse_forget_link *forget,
+ 	if (fiq->connected) {
+ 		fiq->forget_list_tail->next = forget;
+ 		fiq->forget_list_tail = forget;
+-		fiq->ops->wake_forget_and_unlock(fiq);
++		fiq->ops->wake_forget_and_unlock(fiq, false);
+ 	} else {
+ 		kfree(forget);
+ 		spin_unlock(&fiq->lock);
+@@ -265,7 +268,7 @@ static void flush_bg_queue(struct fuse_conn *fc)
+ 		fc->active_background++;
+ 		spin_lock(&fiq->lock);
+ 		req->in.h.unique = fuse_get_unique(fiq);
+-		queue_request_and_unlock(fiq, req);
++		queue_request_and_unlock(fiq, req, false);
+ 	}
+ }
+ 
+@@ -354,7 +357,7 @@ static int queue_interrupt(struct fuse_req *req)
+ 			spin_unlock(&fiq->lock);
+ 			return 0;
+ 		}
+-		fiq->ops->wake_interrupt_and_unlock(fiq);
++		fiq->ops->wake_interrupt_and_unlock(fiq, false);
+ 	} else {
+ 		spin_unlock(&fiq->lock);
+ 	}
+@@ -421,7 +424,7 @@ static void __fuse_request_send(struct fuse_req *req)
+ 		/* acquire extra reference, since request is still needed
+ 		   after fuse_request_end() */
+ 		__fuse_get_request(req);
+-		queue_request_and_unlock(fiq, req);
++		queue_request_and_unlock(fiq, req, true);
+ 
+ 		request_wait_answer(req);
+ 		/* Pairs with smp_wmb() in fuse_request_end() */
+@@ -594,7 +597,7 @@ static int fuse_simple_notify_reply(struct fuse_mount *fm,
+ 
+ 	spin_lock(&fiq->lock);
+ 	if (fiq->connected) {
+-		queue_request_and_unlock(fiq, req);
++		queue_request_and_unlock(fiq, req, false);
+ 	} else {
+ 		err = -ENODEV;
+ 		spin_unlock(&fiq->lock);
+diff --git a/fs/fuse/fuse_i.h b/fs/fuse/fuse_i.h
+index b4713f451aa6..d2399c5ad25f 100644
+--- a/fs/fuse/fuse_i.h
++++ b/fs/fuse/fuse_i.h
+@@ -406,19 +406,19 @@ struct fuse_iqueue_ops {
+ 	/**
+ 	 * Signal that a forget has been queued
+ 	 */
+-	void (*wake_forget_and_unlock)(struct fuse_iqueue *fiq)
++	void (*wake_forget_and_unlock)(struct fuse_iqueue *fiq, bool sync)
+ 		__releases(fiq->lock);
+ 
+ 	/**
+ 	 * Signal that an INTERRUPT request has been queued
+ 	 */
+-	void (*wake_interrupt_and_unlock)(struct fuse_iqueue *fiq)
++	void (*wake_interrupt_and_unlock)(struct fuse_iqueue *fiq, bool sync)
+ 		__releases(fiq->lock);
+ 
+ 	/**
+ 	 * Signal that a request has been queued
+ 	 */
+-	void (*wake_pending_and_unlock)(struct fuse_iqueue *fiq)
++	void (*wake_pending_and_unlock)(struct fuse_iqueue *fiq, bool sync)
+ 		__releases(fiq->lock);
+ 
+ 	/**
+diff --git a/fs/fuse/virtio_fs.c b/fs/fuse/virtio_fs.c
+index 4d8d4f16c727..23a42d860e0b 100644
+--- a/fs/fuse/virtio_fs.c
++++ b/fs/fuse/virtio_fs.c
+@@ -970,7 +970,7 @@ static struct virtio_driver virtio_fs_driver = {
+ #endif
+ };
+ 
+-static void virtio_fs_wake_forget_and_unlock(struct fuse_iqueue *fiq)
++static void virtio_fs_wake_forget_and_unlock(struct fuse_iqueue *fiq, bool sync)
+ __releases(fiq->lock)
+ {
+ 	struct fuse_forget_link *link;
+@@ -1005,7 +1005,8 @@ __releases(fiq->lock)
+ 	kfree(link);
+ }
+ 
+-static void virtio_fs_wake_interrupt_and_unlock(struct fuse_iqueue *fiq)
++static void virtio_fs_wake_interrupt_and_unlock(struct fuse_iqueue *fiq,
++						bool sync)
+ __releases(fiq->lock)
+ {
+ 	/*
+@@ -1220,7 +1221,8 @@ static int virtio_fs_enqueue_req(struct virtio_fs_vq *fsvq,
+ 	return ret;
+ }
+ 
+-static void virtio_fs_wake_pending_and_unlock(struct fuse_iqueue *fiq)
++static void virtio_fs_wake_pending_and_unlock(struct fuse_iqueue *fiq,
++					      bool sync)
+ __releases(fiq->lock)
+ {
+ 	unsigned int queue_id = VQ_REQUEST; /* TODO multiqueue */
+diff --git a/include/linux/wait.h b/include/linux/wait.h
+index a0307b516b09..40dbc01cecb8 100644
+--- a/include/linux/wait.h
++++ b/include/linux/wait.h
+@@ -229,6 +229,7 @@ void __wake_up_pollfree(struct wait_queue_head *wq_head);
+ #define wake_up_interruptible_nr(x, nr)	__wake_up(x, TASK_INTERRUPTIBLE, nr, NULL)
+ #define wake_up_interruptible_all(x)	__wake_up(x, TASK_INTERRUPTIBLE, 0, NULL)
+ #define wake_up_interruptible_sync(x)	__wake_up_sync((x), TASK_INTERRUPTIBLE)
++#define wake_up_sync(x)			__wake_up_sync((x), TASK_NORMAL)
+ 
+ /*
+  * Wakeup macros to be used to report events to the targets.
+-- 
+2.34.1
+

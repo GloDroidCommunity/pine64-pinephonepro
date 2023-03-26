@@ -1,0 +1,71 @@
+From b13f7f2e6d75b9c69b2f6057968e0d9d5d4d2963 Mon Sep 17 00:00:00 2001
+From: Alessio Balsini <balsini@google.com>
+Date: Thu, 27 Jan 2022 14:44:24 +0000
+Subject: [PATCH] ANDROID: fs/fuse: Use extended init flags for
+ FUSE_PASSTHROUGH
+
+Starting with FUSE 7.36, all the fields for the 32-bit FUSE init flags
+have been allocated, so commit 53db28933e952 ("fuse: extend init flags")
+introduces the new 32-bit flags2 field in fuse_init_in and
+fuse_init_out. That change also adds the FUSE_INIT_RESERVED flag that
+doesn't have any specific purpose yet, is just reserved and should not
+be used, and (un)fortunately collides with FUSE_PASSTHROUGH.
+
+This change fixes the conflict by simply setting the FUSE_PASSTHROUGH
+value to the next, latest unused fuse2 bit.
+Although this is not the best design choice, userspace will know what
+FUSE_PASSTHROUGH bit to choose based on the FUSE major and minor version
+for FUSE version:
+- < 7.36:    FUSE_PASSTHROUGH is the 31st bit of flags;
+- otherwise: FUSE_PASSTHROUGH is the 31st bit of flags2.
+
+Test: launch_cvd (both android-mainline and android13-5.10) \
+  `logcat FuseDaemon:V \*:S` shows no FUSE passthrough errors
+Bug: 215310351
+Signed-off-by: Alessio Balsini <balsini@google.com>
+Change-Id: I85d7582008b8c093b3172b3f41c6cdf09863dd45
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/fuse/inode.c           |  2 ++
+ include/uapi/linux/fuse.h | 12 ++++++++++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+index 26f15100f7e6..91e13748534e 100644
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -1272,6 +1272,8 @@ void fuse_send_init(struct fuse_mount *fm)
+ 	if (fm->fc->auto_submounts)
+ 		flags |= FUSE_SUBMOUNTS;
+ 
++	flags |= FUSE_PASSTHROUGH;
++
+ 	ia->in.flags = flags;
+ 	ia->in.flags2 = flags >> 32;
+ 
+diff --git a/include/uapi/linux/fuse.h b/include/uapi/linux/fuse.h
+index 6c1ed03de5e2..c6bab7c45577 100644
+--- a/include/uapi/linux/fuse.h
++++ b/include/uapi/linux/fuse.h
+@@ -407,6 +407,18 @@ struct fuse_file_lock {
+ #define FUSE_HAS_INODE_DAX	(1ULL << 33)
+ #define FUSE_CREATE_SUPP_GROUP	(1ULL << 34)
+ 
++/*
++ * For FUSE < 7.36 FUSE_PASSTHROUGH has value (1 << 31).
++ * This condition check is not really required, but would prevent having a
++ * broken commit in the tree.
++ */
++#if FUSE_KERNEL_VERSION > 7 ||                                                 \
++	(FUSE_KERNEL_VERSION == 7 && FUSE_KERNEL_MINOR_VERSION >= 36)
++#define FUSE_PASSTHROUGH (1ULL << 63)
++#else
++#define FUSE_PASSTHROUGH (1 << 31)
++#endif
++
+ /**
+  * CUSE INIT request/reply flags
+  *
+-- 
+2.34.1
+

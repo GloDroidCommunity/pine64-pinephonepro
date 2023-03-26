@@ -1,0 +1,24 @@
+From 4aa57972b82f750655753b03d475f0fa935a5dd3 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 13:58:13 -0700
+Subject: [PATCH] _____ANNOTATION: device-mapper changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: Id05f5bf633ffbf96ae501fc1e9e39fb4dc9254cc
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index 77ea490ff0aa..5324e46e566a 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -15,3 +15,4 @@ graphics changes
+ sound changes
+ UFS driver changes
+ block changes
++device-mapper changes
+-- 
+2.34.1
+

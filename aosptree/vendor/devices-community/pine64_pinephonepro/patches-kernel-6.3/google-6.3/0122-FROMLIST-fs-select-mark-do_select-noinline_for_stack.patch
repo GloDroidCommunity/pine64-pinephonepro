@@ -1,0 +1,87 @@
+From 183a585ac7fd4886ab3d7c46f676a0ce18ccebbb Mon Sep 17 00:00:00 2001
+From: Nick Desaulniers <ndesaulniers@google.com>
+Date: Tue, 11 Oct 2022 13:55:47 -0700
+Subject: [PATCH] FROMLIST: fs/select: mark do_select noinline_for_stack
+
+Effectively a revert of
+commit ad312f95d41c ("fs/select: avoid clang stack usage warning")
+
+Various configs can still push the stack useage of core_sys_select()
+over the CONFIG_FRAME_WARN threshold (1024B on 32b targets).
+
+  fs/select.c:619:5: error: stack frame size of 1048 bytes in function
+  'core_sys_select' [-Werror,-Wframe-larger-than=]
+
+core_sys_select() has a large stack allocation for `stack_fds` where it
+tries to do something equivalent to "small string optimization" to
+potentially avoid a kmalloc.
+
+core_sys_select() calls do_select() which has another potentially large
+stack allocation, `table`. Both of these values depend on
+FRONTEND_STACK_ALLOC.
+
+Mix those two large allocation with register spills which are
+exacerbated by various configs and compiler versions and we can just
+barely exceed the 1024B limit.
+
+Rather than keep trying to find the right value of MAX_STACK_ALLOC or
+FRONTEND_STACK_ALLOC, mark do_select() as noinline_for_stack.
+
+The intent of FRONTEND_STACK_ALLOC is to help potentially avoid a
+dynamic memory allocation. In that spirit, restore the previous
+threshold but separate the stack frames.
+
+Many tests of various configs for different architectures and various
+versions of GCC were performed; do_select() was never inlined into
+core_sys_select() or compat_core_sys_select(). The kernel is built with
+the GCC specific flag `-fconserve-stack` which can limit inlining
+depending on per-target thresholds of callee stack size, which helps
+avoid the issue when using GCC. Clang is being more aggressive and not
+considering the stack size when decided whether to inline or not. We may
+consider using the clang-16+ flag `-finline-max-stacksize=` in the
+future.
+
+Link: https://lore.kernel.org/lkml/20221006222124.aabaemy7ofop7ccz@google.com/
+Fixes: ad312f95d41c ("fs/select: avoid clang stack usage warning")
+Suggested-by: Arnd Bergmann <arnd@arndb.de>
+Signed-off-by: Nick Desaulniers <ndesaulniers@google.com>
+Bug: 250930332
+Link: https://lore.kernel.org/llvm/20221011205547.14553-1-ndesaulniers@google.com/
+Change-Id: I97d68bd05ec3ae5f6c09fc29055b9f88735c8cd6
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/select.c          | 1 +
+ include/linux/poll.h | 4 ----
+ 2 files changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/fs/select.c b/fs/select.c
+index 0ee55af1a55c..794e2a91b1fa 100644
+--- a/fs/select.c
++++ b/fs/select.c
+@@ -476,6 +476,7 @@ static inline void wait_key_set(poll_table *wait, unsigned long in,
+ 		wait->_key |= POLLOUT_SET;
+ }
+ 
++noinline_for_stack
+ static int do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
+ {
+ 	ktime_t expire, *to = NULL;
+diff --git a/include/linux/poll.h b/include/linux/poll.h
+index a9e0e1c2d1f2..d1ea4f3714a8 100644
+--- a/include/linux/poll.h
++++ b/include/linux/poll.h
+@@ -14,11 +14,7 @@
+ 
+ /* ~832 bytes of stack space used max in sys_select/sys_poll before allocating
+    additional memory. */
+-#ifdef __clang__
+-#define MAX_STACK_ALLOC 768
+-#else
+ #define MAX_STACK_ALLOC 832
+-#endif
+ #define FRONTEND_STACK_ALLOC	256
+ #define SELECT_STACK_ALLOC	FRONTEND_STACK_ALLOC
+ #define POLL_STACK_ALLOC	FRONTEND_STACK_ALLOC
+-- 
+2.34.1
+

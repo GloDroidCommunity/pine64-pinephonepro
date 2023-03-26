@@ -1,0 +1,24 @@
+From ea7af07ddfc8fa0ff70a146b06e101ffa0ec5c70 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 14:01:01 -0700
+Subject: [PATCH] _____ANNOTATION: UFS driver changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: I1fc1f4ff872e675ffff63e0936577e128b7c43cd
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index c95dffb5e1ae..3d4ee22e43a6 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -13,3 +13,4 @@ tty changes
+ USB changes
+ graphics changes
+ sound changes
++UFS driver changes
+-- 
+2.34.1
+

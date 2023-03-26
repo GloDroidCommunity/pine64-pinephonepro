@@ -1,0 +1,37 @@
+From 122e2834a7eac0f2adf9eaaa342383b33b9f2509 Mon Sep 17 00:00:00 2001
+From: Roman Stratiienko <r.stratiienko@gmail.com>
+Date: Mon, 29 Aug 2022 20:23:59 +0300
+Subject: [PATCH] GLODROID: HACK: Disable EPOLLWAKEUP handling
+
+Due to some PPP wlan driver issues phone can't go to sleep.
+
+Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
+---
+ fs/eventpoll.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/fs/eventpoll.c b/fs/eventpoll.c
+index 64659b110973..6ac574c9b926 100644
+--- a/fs/eventpoll.c
++++ b/fs/eventpoll.c
+@@ -1502,7 +1502,7 @@ static int ep_insert(struct eventpoll *ep, const struct epoll_event *event,
+ 		return -EINVAL;
+ 	}
+ 
+-	if (epi->event.events & EPOLLWAKEUP) {
++	if (0/*epi->event.events & EPOLLWAKEUP*/) {
+ 		error = ep_create_wakeup_source(epi);
+ 		if (error) {
+ 			ep_remove(ep, epi);
+@@ -1581,7 +1581,7 @@ static int ep_modify(struct eventpoll *ep, struct epitem *epi,
+ 	 */
+ 	epi->event.events = event->events; /* need barrier below */
+ 	epi->event.data = event->data; /* protected by mtx */
+-	if (epi->event.events & EPOLLWAKEUP) {
++	if (0/*epi->event.events & EPOLLWAKEUP*/) {
+ 		if (!ep_has_wakeup_source(epi))
+ 			ep_create_wakeup_source(epi);
+ 	} else if (ep_has_wakeup_source(epi)) {
+-- 
+2.34.1
+

@@ -1,0 +1,24 @@
+From 8fdd4d2136ca17840d32ba191adf416b485a7b9a Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 15:32:27 -0700
+Subject: [PATCH] _____ANNOTATION: power management changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: If8b0fcc2dbcdf8f7d1b8749b93b323807891b4b8
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index 6e52e90ad401..68dcf343ffb9 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -2,3 +2,4 @@ pending upstream
+ binder changes
+ kbuild changes
+ core kernel changes
++power management changes
+-- 
+2.34.1
+

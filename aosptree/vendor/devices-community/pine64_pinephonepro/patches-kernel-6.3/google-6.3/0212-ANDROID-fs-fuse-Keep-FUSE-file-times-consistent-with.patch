@@ -1,0 +1,112 @@
+From d7202f967671e2bea81d7e9ae4572a742b686c64 Mon Sep 17 00:00:00 2001
+From: Alessio Balsini <balsini@google.com>
+Date: Thu, 23 Sep 2021 11:04:35 +0100
+Subject: [PATCH] ANDROID: fs/fuse: Keep FUSE file times consistent with lower
+ file
+
+When FUSE passthrough is used, the lower file system file is manipulated
+directly, but neither mtime, atime or ctime of the referencing FUSE file
+is updated.
+
+Fix by updating the file times when passthrough operations are
+performed.
+
+Bug: 200779468
+Reported-by: Fengnan Chang <changfengnan@vivo.com>
+Reported-by: Ed Tsai <ed.tsai@mediatek.com>
+Signed-off-by: Alessio Balsini <balsini@google.com>
+Change-Id: I35b72196b2cc1d79a9f62ddb32e2cfa934c3b6d3
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ fs/fuse/passthrough.c | 41 ++++++++++++++++++++++++++++-------------
+ 1 file changed, 28 insertions(+), 13 deletions(-)
+
+diff --git a/fs/fuse/passthrough.c b/fs/fuse/passthrough.c
+index ae1e1db78472..630fa2880f8b 100644
+--- a/fs/fuse/passthrough.c
++++ b/fs/fuse/passthrough.c
+@@ -15,11 +15,34 @@ struct fuse_aio_req {
+ 	struct kiocb *iocb_fuse;
+ };
+ 
++static void fuse_file_accessed(struct file *dst_file, struct file *src_file)
++{
++	struct inode *dst_inode;
++	struct inode *src_inode;
++
++	if (dst_file->f_flags & O_NOATIME)
++		return;
++
++	dst_inode = file_inode(dst_file);
++	src_inode = file_inode(src_file);
++
++	if ((!timespec64_equal(&dst_inode->i_mtime, &src_inode->i_mtime) ||
++	     !timespec64_equal(&dst_inode->i_ctime, &src_inode->i_ctime))) {
++		dst_inode->i_mtime = src_inode->i_mtime;
++		dst_inode->i_ctime = src_inode->i_ctime;
++	}
++
++	touch_atime(&dst_file->f_path);
++}
++
+ static void fuse_copyattr(struct file *dst_file, struct file *src_file)
+ {
+ 	struct inode *dst = file_inode(dst_file);
+ 	struct inode *src = file_inode(src_file);
+ 
++	dst->i_atime = src->i_atime;
++	dst->i_mtime = src->i_mtime;
++	dst->i_ctime = src->i_ctime;
+ 	i_size_write(dst, i_size_read(src));
+ }
+ 
+@@ -85,6 +108,8 @@ ssize_t fuse_passthrough_read_iter(struct kiocb *iocb_fuse,
+ out:
+ 	revert_creds(old_cred);
+ 
++	fuse_file_accessed(fuse_filp, passthrough_filp);
++
+ 	return ret;
+ }
+ 
+@@ -104,6 +129,8 @@ ssize_t fuse_passthrough_write_iter(struct kiocb *iocb_fuse,
+ 
+ 	inode_lock(fuse_inode);
+ 
++	fuse_copyattr(fuse_filp, passthrough_filp);
++
+ 	old_cred = override_creds(ff->passthrough.cred);
+ 	if (is_sync_kiocb(iocb_fuse)) {
+ 		file_start_write(passthrough_filp);
+@@ -144,9 +171,7 @@ ssize_t fuse_passthrough_mmap(struct file *file, struct vm_area_struct *vma)
+ 	int ret;
+ 	const struct cred *old_cred;
+ 	struct fuse_file *ff = file->private_data;
+-	struct inode *fuse_inode = file_inode(file);
+ 	struct file *passthrough_filp = ff->passthrough.filp;
+-	struct inode *passthrough_inode = file_inode(passthrough_filp);
+ 
+ 	if (!passthrough_filp->f_op->mmap)
+ 		return -ENODEV;
+@@ -165,17 +190,7 @@ ssize_t fuse_passthrough_mmap(struct file *file, struct vm_area_struct *vma)
+ 	else
+ 		fput(file);
+ 
+-	if (file->f_flags & O_NOATIME)
+-		return ret;
+-
+-	if ((!timespec64_equal(&fuse_inode->i_mtime,
+-			       &passthrough_inode->i_mtime) ||
+-	     !timespec64_equal(&fuse_inode->i_ctime,
+-			       &passthrough_inode->i_ctime))) {
+-		fuse_inode->i_mtime = passthrough_inode->i_mtime;
+-		fuse_inode->i_ctime = passthrough_inode->i_ctime;
+-	}
+-	touch_atime(&file->f_path);
++	fuse_file_accessed(file, passthrough_filp);
+ 
+ 	return ret;
+ }
+-- 
+2.34.1
+

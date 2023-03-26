@@ -1,0 +1,56 @@
+From 16a35ed10a89dbe2b3690fa313e3720158149ce7 Mon Sep 17 00:00:00 2001
+From: Todd Kjos <tkjos@google.com>
+Date: Thu, 21 Apr 2022 16:44:09 +0000
+Subject: [PATCH] ANDROID: media: increase video max frame number
+
+Few userspace clients and drivers need more frames and
+hence increase video max frame number from 32 to 64.
+
+Bug: 143356419
+
+[CPNOTE: 19/07/21] Lee: Poked bug for status
+
+[CPNOTE: 10/05/22] Lee: Removed, then added by Todd:
+
+  "All kernels since Jan 2020 have "#define VIDEO_MAX_FRAME 64" and
+   partner vendor code relies on this. Since bionic headers come from
+   android-mainline, we need to keep the "64" setting."
+
+Bug: 228783882
+Change-Id: I3ad1a1fc603d5e259c23fbee9b921a2705012deb
+Signed-off-by: Todd Kjos <tkjos@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/media/videobuf2-core.h | 2 +-
+ include/uapi/linux/videodev2.h | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/include/media/videobuf2-core.h b/include/media/videobuf2-core.h
+index 4b6a9d2ea372..cacd498ceca5 100644
+--- a/include/media/videobuf2-core.h
++++ b/include/media/videobuf2-core.h
+@@ -20,7 +20,7 @@
+ #include <media/media-request.h>
+ #include <media/frame_vector.h>
+ 
+-#define VB2_MAX_FRAME	(32)
++#define VB2_MAX_FRAME	(64)
+ #define VB2_MAX_PLANES	(8)
+ 
+ /**
+diff --git a/include/uapi/linux/videodev2.h b/include/uapi/linux/videodev2.h
+index 17a9b975177a..8d42a93bdc1d 100644
+--- a/include/uapi/linux/videodev2.h
++++ b/include/uapi/linux/videodev2.h
+@@ -70,7 +70,7 @@
+  * Common stuff for both V4L1 and V4L2
+  * Moved from videodev.h
+  */
+-#define VIDEO_MAX_FRAME               32
++#define VIDEO_MAX_FRAME               64
+ #define VIDEO_MAX_PLANES               8
+ 
+ /*
+-- 
+2.34.1
+

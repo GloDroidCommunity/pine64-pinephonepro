@@ -1,0 +1,138 @@
+From bf18d4f1baa24606acbed043c04ae3c50d99f766 Mon Sep 17 00:00:00 2001
+From: "J. Avila" <elavila@google.com>
+Date: Tue, 14 Jul 2020 22:03:38 +0000
+Subject: [PATCH] ANDROID: sched/rt: Add support for rt sync wakeups
+
+Some rt tasks undergo sync wakeup. Currently, these tasks will be placed
+on other, often sleeping or otherwise idle CPUs, which can lead to
+unnecessary power hits. Support rt sync wakeups, but only enable
+rt sync for SMP targets.
+
+Bug: 157906395
+Change-Id: I48864d0847bbe4f7813c842032880ad3f3b8b06b
+Signed-off-by: J. Avila <elavila@google.com>
+[quic_dickey@quicinc.com: Port to mainline]
+Signed-off-by: Stephen Dickey <quic_dickey@quicinc.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ kernel/sched/core.c  |  3 +++
+ kernel/sched/rt.c    | 39 ++++++++++++++++++++++++++++++++++++++-
+ kernel/sched/sched.h |  2 ++
+ 3 files changed, 43 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 711fab8ca3b1..35a59a097103 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -3697,6 +3697,9 @@ ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
+ {
+ 	int en_flags = ENQUEUE_WAKEUP | ENQUEUE_NOCLOCK;
+ 
++	if (wake_flags & WF_SYNC)
++		en_flags |= ENQUEUE_WAKEUP_SYNC;
++
+ 	lockdep_assert_rq_held(rq);
+ 
+ 	if (p->sched_contributes_to_load)
+diff --git a/kernel/sched/rt.c b/kernel/sched/rt.c
+index 0a11f44adee5..ba03a9122ba4 100644
+--- a/kernel/sched/rt.c
++++ b/kernel/sched/rt.c
+@@ -1528,6 +1528,27 @@ static void dequeue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flags)
+ 	enqueue_top_rt_rq(&rq->rt);
+ }
+ 
++#ifdef CONFIG_SMP
++static inline bool should_honor_rt_sync(struct rq *rq, struct task_struct *p,
++					bool sync)
++{
++	/*
++	 * If the waker is CFS, then an RT sync wakeup would preempt the waker
++	 * and force it to run for a likely small time after the RT wakee is
++	 * done. So, only honor RT sync wakeups from RT wakers.
++	 */
++	return sync && task_has_rt_policy(rq->curr) &&
++		p->prio <= rq->rt.highest_prio.next &&
++		rq->rt.rt_nr_running <= 2;
++}
++#else
++static inline bool should_honor_rt_sync(struct rq *rq, struct task_struct *p,
++					bool sync)
++{
++	return 0;
++}
++#endif
++
+ /*
+  * Adding/removing a task to/from a priority array:
+  */
+@@ -1535,6 +1556,7 @@ static void
+ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
+ {
+ 	struct sched_rt_entity *rt_se = &p->rt;
++	bool sync = !!(flags & ENQUEUE_WAKEUP_SYNC);
+ 
+ 	if (flags & ENQUEUE_WAKEUP)
+ 		rt_se->timeout = 0;
+@@ -1544,7 +1566,8 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
+ 
+ 	enqueue_rt_entity(rt_se, flags);
+ 
+-	if (!task_current(rq, p) && p->nr_cpus_allowed > 1)
++	if (!task_current(rq, p) && p->nr_cpus_allowed > 1 &&
++	    !should_honor_rt_sync(rq, p, sync))
+ 		enqueue_pushable_task(rq, p);
+ }
+ 
+@@ -1600,7 +1623,10 @@ select_task_rq_rt(struct task_struct *p, int cpu, int flags)
+ {
+ 	struct task_struct *curr;
+ 	struct rq *rq;
++	struct rq *this_cpu_rq;
+ 	bool test;
++	bool sync = !!(flags & WF_SYNC);
++	int this_cpu;
+ 
+ 	/* For anything but wake ups, just return the task_cpu */
+ 	if (!(flags & (WF_TTWU | WF_FORK)))
+@@ -1610,6 +1636,8 @@ select_task_rq_rt(struct task_struct *p, int cpu, int flags)
+ 
+ 	rcu_read_lock();
+ 	curr = READ_ONCE(rq->curr); /* unlocked access */
++	this_cpu = smp_processor_id();
++	this_cpu_rq = cpu_rq(this_cpu);
+ 
+ 	/*
+ 	 * If the current task on @p's runqueue is an RT task, then
+@@ -1641,6 +1669,15 @@ select_task_rq_rt(struct task_struct *p, int cpu, int flags)
+ 	       unlikely(rt_task(curr)) &&
+ 	       (curr->nr_cpus_allowed < 2 || curr->prio <= p->prio);
+ 
++	/*
++	 * Respect the sync flag as long as the task can run on this CPU.
++	 */
++	if (should_honor_rt_sync(this_cpu_rq, p, sync) &&
++	    cpumask_test_cpu(this_cpu, p->cpus_ptr)) {
++		cpu = this_cpu;
++		goto out_unlock;
++	}
++
+ 	if (test || !rt_task_fits_capacity(p, cpu)) {
+ 		int target = find_lowest_rq(p);
+ 
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index 7646b4ed409c..fcb0b4b51cc8 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -2160,6 +2160,8 @@ extern const u32		sched_prio_to_wmult[40];
+ #define ENQUEUE_MIGRATED	0x00
+ #endif
+ 
++#define ENQUEUE_WAKEUP_SYNC	0x80
++
+ #define RETRY_TASK		((void *)-1UL)
+ 
+ struct affinity_context {
+-- 
+2.34.1
+

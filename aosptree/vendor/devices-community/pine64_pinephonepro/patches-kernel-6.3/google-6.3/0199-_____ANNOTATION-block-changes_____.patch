@@ -1,0 +1,24 @@
+From 1568dddb4b4446142f079d1d2cd9b25d5ea6a033 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 13:57:57 -0700
+Subject: [PATCH] _____ANNOTATION: block changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: I45c6df281e977b9024a9281933a30f1797104acf
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index 3d4ee22e43a6..77ea490ff0aa 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -14,3 +14,4 @@ USB changes
+ graphics changes
+ sound changes
+ UFS driver changes
++block changes
+-- 
+2.34.1
+

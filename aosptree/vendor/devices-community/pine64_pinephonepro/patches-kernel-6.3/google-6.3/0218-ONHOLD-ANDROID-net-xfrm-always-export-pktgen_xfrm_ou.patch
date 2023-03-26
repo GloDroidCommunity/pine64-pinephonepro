@@ -1,0 +1,63 @@
+From d66e3d7e3eed98116123c39dbd27d685c58da0c9 Mon Sep 17 00:00:00 2001
+From: Lorenzo Colitti <lorenzo@google.com>
+Date: Tue, 27 Oct 2020 23:15:13 +0900
+Subject: [PATCH] ONHOLD: ANDROID: net: xfrm: always export
+ pktgen_xfrm_outer_mode_output
+
+Currently, it is not possible to set CONFIG_NET_PKTGEN=m in a
+vendor kernel, as it depends on pktgen_xfrm_outer_mode_output,
+which is only exported if CONFIG_NET_PKTGEN is enabled.
+
+Always export this symbol so vendor kernels can depend on it.
+This may be simpler than the alternative, which is to set
+CONFIG_NET_PKTGEN=m in the GKI kernel.
+
+[CPNOTE: 20/07/21] Lee: Requested more info from the bug
+[CPNOTE: 04/08/21] Lee: Set NET_PKTGEN=m in Android 'T' (android13)
+
+Bug: 171693245
+Signed-off-by: Lorenzo Colitti <lorenzo@google.com>
+Change-Id: I96b48c77121aea90fb4c4c51ecb97a92601bccf6
+(cherry picked from commit 3ef1e249c624e1a7f28e1364d9b924d933826ee6)
+Signed-off-by: Will McVicker <willmcvicker@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ include/net/xfrm.h     | 2 --
+ net/xfrm/xfrm_output.c | 2 --
+ 2 files changed, 4 deletions(-)
+
+diff --git a/include/net/xfrm.h b/include/net/xfrm.h
+index 3e1f70e8e424..83b5ca55a099 100644
+--- a/include/net/xfrm.h
++++ b/include/net/xfrm.h
+@@ -1658,9 +1658,7 @@ int xfrm_trans_queue(struct sk_buff *skb,
+ int xfrm_output_resume(struct sock *sk, struct sk_buff *skb, int err);
+ int xfrm_output(struct sock *sk, struct sk_buff *skb);
+ 
+-#if IS_ENABLED(CONFIG_NET_PKTGEN)
+ int pktgen_xfrm_outer_mode_output(struct xfrm_state *x, struct sk_buff *skb);
+-#endif
+ 
+ void xfrm_local_error(struct sk_buff *skb, int mtu);
+ int xfrm4_extract_input(struct xfrm_state *x, struct sk_buff *skb);
+diff --git a/net/xfrm/xfrm_output.c b/net/xfrm/xfrm_output.c
+index ff114d68cc43..e9f1ef5f1250 100644
+--- a/net/xfrm/xfrm_output.c
++++ b/net/xfrm/xfrm_output.c
+@@ -478,13 +478,11 @@ static int xfrm_outer_mode_output(struct xfrm_state *x, struct sk_buff *skb)
+ 	return -EOPNOTSUPP;
+ }
+ 
+-#if IS_ENABLED(CONFIG_NET_PKTGEN)
+ int pktgen_xfrm_outer_mode_output(struct xfrm_state *x, struct sk_buff *skb)
+ {
+ 	return xfrm_outer_mode_output(x, skb);
+ }
+ EXPORT_SYMBOL_GPL(pktgen_xfrm_outer_mode_output);
+-#endif
+ 
+ static int xfrm_output_one(struct sk_buff *skb, int err)
+ {
+-- 
+2.34.1
+

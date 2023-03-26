@@ -1,0 +1,89 @@
+From 8e821721f549862f89ffdbce7b0be33899d57d06 Mon Sep 17 00:00:00 2001
+From: Guangming Cao <Guangming.Cao@mediatek.com>
+Date: Thu, 3 Jun 2021 10:21:51 +0800
+Subject: [PATCH] ANDROID: dma-heap: Let dma heap use dma_map_attrs to map &
+ unmap iova
+
+For dma-heap users, they can't bypass cache sync when map/unmap iova
+with dma heap. But they can do it by adding DMA_ATTR_SKIP_CPU_SYNC
+into dma_alloc_attrs.
+
+To keep alignment, at dma_heap side, also use
+dma_buf_attachment.dma_map_attrs to do iova map & unmap.
+
+This patch is a little different with linux patch, because ACK
+has cached heap, and linux doesn't have it
+
+Bug: 229794062
+Link: https://lore.kernel.org/patchwork/patch/1455032/
+Signed-off-by: Guangming Cao <Guangming.Cao@mediatek.com>
+(cherry picked from commit 9d3a91652bb1a762312051fdbb403cd5dec58e05)
+Change-Id: Idbd96c8486ad752d88d93b204daaefc605261845
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ drivers/dma-buf/heaps/cma_heap.c    | 6 ++++--
+ drivers/dma-buf/heaps/system_heap.c | 8 ++++----
+ 2 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/dma-buf/heaps/cma_heap.c b/drivers/dma-buf/heaps/cma_heap.c
+index 1131fb943992..d3c0f31074d0 100644
+--- a/drivers/dma-buf/heaps/cma_heap.c
++++ b/drivers/dma-buf/heaps/cma_heap.c
+@@ -100,9 +100,10 @@ static struct sg_table *cma_heap_map_dma_buf(struct dma_buf_attachment *attachme
+ {
+ 	struct dma_heap_attachment *a = attachment->priv;
+ 	struct sg_table *table = &a->table;
++	int attrs = attachment->dma_map_attrs;
+ 	int ret;
+ 
+-	ret = dma_map_sgtable(attachment->dev, table, direction, 0);
++	ret = dma_map_sgtable(attachment->dev, table, direction, attrs);
+ 	if (ret)
+ 		return ERR_PTR(-ENOMEM);
+ 	a->mapped = true;
+@@ -114,9 +115,10 @@ static void cma_heap_unmap_dma_buf(struct dma_buf_attachment *attachment,
+ 				   enum dma_data_direction direction)
+ {
+ 	struct dma_heap_attachment *a = attachment->priv;
++	int attrs = attachment->dma_map_attrs;
+ 
+ 	a->mapped = false;
+-	dma_unmap_sgtable(attachment->dev, table, direction, 0);
++	dma_unmap_sgtable(attachment->dev, table, direction, attrs);
+ }
+ 
+ static int cma_heap_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
+diff --git a/drivers/dma-buf/heaps/system_heap.c b/drivers/dma-buf/heaps/system_heap.c
+index f1d8a384e3c9..11b490b7cd6e 100644
+--- a/drivers/dma-buf/heaps/system_heap.c
++++ b/drivers/dma-buf/heaps/system_heap.c
+@@ -137,11 +137,11 @@ static struct sg_table *system_heap_map_dma_buf(struct dma_buf_attachment *attac
+ {
+ 	struct dma_heap_attachment *a = attachment->priv;
+ 	struct sg_table *table = a->table;
+-	int attr = 0;
++	int attr = attachment->dma_map_attrs;
+ 	int ret;
+ 
+ 	if (a->uncached)
+-		attr = DMA_ATTR_SKIP_CPU_SYNC;
++		attr |= DMA_ATTR_SKIP_CPU_SYNC;
+ 
+ 	ret = dma_map_sgtable(attachment->dev, table, direction, attr);
+ 	if (ret)
+@@ -156,10 +156,10 @@ static void system_heap_unmap_dma_buf(struct dma_buf_attachment *attachment,
+ 				      enum dma_data_direction direction)
+ {
+ 	struct dma_heap_attachment *a = attachment->priv;
+-	int attr = 0;
++	int attr = attachment->dma_map_attrs;
+ 
+ 	if (a->uncached)
+-		attr = DMA_ATTR_SKIP_CPU_SYNC;
++		attr |= DMA_ATTR_SKIP_CPU_SYNC;
+ 	a->mapped = false;
+ 	dma_unmap_sgtable(attachment->dev, table, direction, attr);
+ }
+-- 
+2.34.1
+

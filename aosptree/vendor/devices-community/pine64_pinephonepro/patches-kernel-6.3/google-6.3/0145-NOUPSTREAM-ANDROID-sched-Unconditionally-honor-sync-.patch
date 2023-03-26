@@ -1,0 +1,70 @@
+From 279e22d2dbe556e88d63cc25ce0799284db70a31 Mon Sep 17 00:00:00 2001
+From: Chris Redpath <chris.redpath@arm.com>
+Date: Wed, 27 Mar 2019 17:15:17 +0000
+Subject: [PATCH] NOUPSTREAM: ANDROID: sched: Unconditionally honor sync flag
+ for energy-aware wakeups
+
+Since we don't do energy-aware wakeups when we are overutilized, always
+honoring sync wakeups in this state does not prevent wake-wide mechanics
+overruling the flag as normal.
+
+This patch is based upon previous work to build EAS for android products.
+
+sync-hint code taken from commit 4a5e890ec60d
+"sched/fair: add tunable to force selection at cpu granularity" written
+by Juri Lelli <juri.lelli@arm.com>
+
+[CPNOTE: 29/06/21] Lee: Binder related - may regress upstream workloads
+
+Bug: 120440300
+Change-Id: I4b3d79141fc8e53dc51cd63ac11096c2e3cb10f5
+Signed-off-by: Chris Redpath <chris.redpath@arm.com>
+(cherry-picked from commit f1ec666a62dec1083ed52fe1ddef093b84373aaf)
+[ Moved the feature to find_energy_efficient_cpu() and removed the
+  sysctl knob ]
+Signed-off-by: Quentin Perret <quentin.perret@arm.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ kernel/sched/fair.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index 6986ea31c984..b28d4267f0fa 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -7388,7 +7388,7 @@ compute_energy(struct energy_env *eenv, struct perf_domain *pd,
+  * other use-cases too. So, until someone finds a better way to solve this,
+  * let's keep things simple by re-using the existing slow path.
+  */
+-static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
++static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sync)
+ {
+ 	struct cpumask *cpus = this_cpu_cpumask_var_ptr(select_rq_mask);
+ 	unsigned long prev_delta = ULONG_MAX, best_delta = ULONG_MAX;
+@@ -7408,6 +7408,14 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
+ 	if (!pd || READ_ONCE(rd->overutilized))
+ 		goto unlock;
+ 
++	cpu = smp_processor_id();
++	if (sync && cpu_rq(cpu)->nr_running == 1 &&
++	    cpumask_test_cpu(cpu, p->cpus_ptr) &&
++	    task_fits_capacity(p, capacity_of(cpu))) {
++		rcu_read_unlock();
++		return cpu;
++	}
++
+ 	/*
+ 	 * Energy-aware wake-up happens on the lowest sched_domain starting
+ 	 * from sd_asym_cpucapacity spanning over this_cpu and prev_cpu.
+@@ -7606,7 +7614,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int wake_flags)
+ 		record_wakee(p);
+ 
+ 		if (sched_energy_enabled()) {
+-			new_cpu = find_energy_efficient_cpu(p, prev_cpu);
++			new_cpu = find_energy_efficient_cpu(p, prev_cpu, sync);
+ 			if (new_cpu >= 0)
+ 				return new_cpu;
+ 			new_cpu = prev_cpu;
+-- 
+2.34.1
+

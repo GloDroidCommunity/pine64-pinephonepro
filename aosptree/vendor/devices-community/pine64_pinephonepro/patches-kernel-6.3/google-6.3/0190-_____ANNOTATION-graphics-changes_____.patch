@@ -1,0 +1,24 @@
+From ee64fd5dd1eabb7660b361378cf398edc51dc855 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Wed, 12 Aug 2020 13:59:35 -0700
+Subject: [PATCH] _____ANNOTATION: graphics changes_____
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+Change-Id: I48fefd7a2268f5db497468dae6b5e40ad43cf4f8
+---
+ ANNOTATIONS | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ANNOTATIONS b/ANNOTATIONS
+index f4701f39d20c..72e03a946419 100644
+--- a/ANNOTATIONS
++++ b/ANNOTATIONS
+@@ -11,3 +11,4 @@ dma-buf changes
+ driver framework and misc driver changes
+ tty changes
+ USB changes
++graphics changes
+-- 
+2.34.1
+

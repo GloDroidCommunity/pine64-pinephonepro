@@ -1,0 +1,181 @@
+From 844b4f76d3fb3ba72bc149290bc9507b72724cf4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Bram=20Bonn=C3=A9?= <brambonne@google.com>
+Date: Fri, 30 Apr 2021 11:50:19 +0200
+Subject: [PATCH] ANDROID: selinux: modify RTM_GETNEIGH{TBL}
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Map the permission gating RTM_GETNEIGH/RTM_GETNEIGHTBL messages to a
+new permission so that it can be distinguished from the other netlink
+route permissions in selinux policy. The new permission is triggered by
+a flag set in system images T and up.
+
+This change is intended to be backported to all kernels that a T system
+image can run on top of.
+
+[CPNOTE: 02/07/21] Lee: Pinged bug for latest status
+
+Bug: 171572148
+Test: atest NetworkInterfaceTest
+Test: atest CtsSelinuxTargetSdkCurrentTestCases
+Test: atest bionic-unit-tests-static
+Test: On Cuttlefish, run combinations of:
+    - Policy bit set or omitted (see https://r.android.com/1701847)
+    - This patch applied or omitted
+    - App having nlmsg_readneigh permission or not
+  Verify that only the combination of this patch + the policy bit being
+  set + the app not having the nlmsg_readneigh permission prevents the
+  app from sending RTM_GETNEIGH messages.
+
+Change-Id: I4bcfce4decb34ea9388eeedfc4be67403de8a980
+Signed-off-by: Bram Bonné <brambonne@google.com>
+Signed-off-by: Lee Jones <joneslee@google.com>
+---
+ security/selinux/include/classmap.h |  3 ++-
+ security/selinux/include/security.h |  8 ++++++++
+ security/selinux/nlmsgtab.c         | 24 ++++++++++++++++++++----
+ security/selinux/ss/policydb.c      |  4 ++++
+ security/selinux/ss/policydb.h      |  2 ++
+ security/selinux/ss/services.c      |  1 +
+ 6 files changed, 37 insertions(+), 5 deletions(-)
+
+diff --git a/security/selinux/include/classmap.h b/security/selinux/include/classmap.h
+index cd140d489d4f..d743c308db33 100644
+--- a/security/selinux/include/classmap.h
++++ b/security/selinux/include/classmap.h
+@@ -117,7 +117,8 @@ const struct security_class_mapping secclass_map[] = {
+ 	  { COMMON_IPC_PERMS, NULL } },
+ 	{ "netlink_route_socket",
+ 	  { COMMON_SOCK_PERMS,
+-	    "nlmsg_read", "nlmsg_write", "nlmsg_readpriv", NULL } },
++	    "nlmsg_read", "nlmsg_write", "nlmsg_readpriv", "nlmsg_getneigh",
++	    NULL } },
+ 	{ "netlink_tcpdiag_socket",
+ 	  { COMMON_SOCK_PERMS,
+ 	    "nlmsg_read", "nlmsg_write", NULL } },
+diff --git a/security/selinux/include/security.h b/security/selinux/include/security.h
+index 63cd160486b3..ad59c4c02394 100644
+--- a/security/selinux/include/security.h
++++ b/security/selinux/include/security.h
+@@ -100,6 +100,7 @@ struct selinux_state {
+ 	bool initialized;
+ 	bool policycap[__POLICYDB_CAP_MAX];
+ 	bool android_netlink_route;
++	bool android_netlink_getneigh;
+ 
+ 	struct page *status_page;
+ 	struct mutex status_lock;
+@@ -238,6 +239,13 @@ static inline bool selinux_android_nlroute_getlink(void)
+ 	return state->android_netlink_route;
+ }
+ 
++static inline bool selinux_android_nlroute_getneigh(void)
++{
++	struct selinux_state *state = &selinux_state;
++
++	return state->android_netlink_getneigh;
++}
++
+ struct selinux_policy_convert_data;
+ 
+ struct selinux_load_state {
+diff --git a/security/selinux/nlmsgtab.c b/security/selinux/nlmsgtab.c
+index 0b27450681a7..32200ece5b9d 100644
+--- a/security/selinux/nlmsgtab.c
++++ b/security/selinux/nlmsgtab.c
+@@ -217,12 +217,12 @@ int selinux_nlmsg_lookup(u16 sclass, u16 nlmsg_type, u32 *perm)
+ 	return err;
+ }
+ 
+-static void nlmsg_set_getlink_perm(u32 perm)
++static void nlmsg_set_perm_for_type(u32 perm, u16 type)
+ {
+ 	int i;
+ 
+ 	for (i = 0; i < ARRAY_SIZE(nlmsg_route_perms); i++) {
+-		if (nlmsg_route_perms[i].nlmsg_type == RTM_GETLINK) {
++		if (nlmsg_route_perms[i].nlmsg_type == type) {
+ 			nlmsg_route_perms[i].perm = perm;
+ 			break;
+ 		}
+@@ -232,11 +232,27 @@ static void nlmsg_set_getlink_perm(u32 perm)
+ /**
+  * Use nlmsg_readpriv as the permission for RTM_GETLINK messages if the
+  * netlink_route_getlink policy capability is set. Otherwise use nlmsg_read.
++ * Similarly, use nlmsg_getneigh for RTM_GETNEIGH and RTM_GETNEIGHTBL if the
++ * netlink_route_getneigh policy capability is set. Otherwise use nlmsg_read.
+  */
+ void selinux_nlmsg_init(void)
+ {
+ 	if (selinux_android_nlroute_getlink())
+-		nlmsg_set_getlink_perm(NETLINK_ROUTE_SOCKET__NLMSG_READPRIV);
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_READPRIV,
++					RTM_GETLINK);
+ 	else
+-		nlmsg_set_getlink_perm(NETLINK_ROUTE_SOCKET__NLMSG_READ);
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_READ,
++					RTM_GETLINK);
++
++	if (selinux_android_nlroute_getneigh()) {
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_GETNEIGH,
++					RTM_GETNEIGH);
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_GETNEIGH,
++					RTM_GETNEIGHTBL);
++	} else {
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_READ,
++					RTM_GETNEIGH);
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_READ,
++					RTM_GETNEIGHTBL);
++	}
+ }
+diff --git a/security/selinux/ss/policydb.c b/security/selinux/ss/policydb.c
+index b93eead4dc5b..a36825a046d9 100644
+--- a/security/selinux/ss/policydb.c
++++ b/security/selinux/ss/policydb.c
+@@ -2489,6 +2489,10 @@ int policydb_read(struct policydb *p, void *fp)
+ 		p->android_netlink_route = 1;
+ 	}
+ 
++	if ((le32_to_cpu(buf[1]) & POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH)) {
++		p->android_netlink_getneigh = 1;
++	}
++
+ 	if (p->policyvers >= POLICYDB_VERSION_POLCAP) {
+ 		rc = ebitmap_read(&p->policycaps, fp);
+ 		if (rc)
+diff --git a/security/selinux/ss/policydb.h b/security/selinux/ss/policydb.h
+index a541bc2e6fa5..1d758118e224 100644
+--- a/security/selinux/ss/policydb.h
++++ b/security/selinux/ss/policydb.h
+@@ -239,6 +239,7 @@ struct genfs {
+ struct policydb {
+ 	int mls_enabled;
+ 	int android_netlink_route;
++	int android_netlink_getneigh;
+ 
+ 	/* symbol tables */
+ 	struct symtab symtab[SYM_NUM];
+@@ -336,6 +337,7 @@ extern struct role_trans_datum *policydb_roletr_search(
+ 
+ #define POLICYDB_CONFIG_MLS    1
+ #define POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE    (1 << 31)
++#define POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH (1 << 30)
+ 
+ /* the config flags related to unknown classes/perms are bits 2 and 3 */
+ #define REJECT_UNKNOWN	0x00000002
+diff --git a/security/selinux/ss/services.c b/security/selinux/ss/services.c
+index 2ff7d56f853a..37028bb9065d 100644
+--- a/security/selinux/ss/services.c
++++ b/security/selinux/ss/services.c
+@@ -2160,6 +2160,7 @@ static void security_load_policycaps(struct selinux_state *state,
+ 	}
+ 
+ 	state->android_netlink_route = p->android_netlink_route;
++	state->android_netlink_getneigh = p->android_netlink_getneigh;
+ 	selinux_nlmsg_init();
+ }
+ 
+-- 
+2.34.1
+
