@@ -1,0 +1,203 @@
+From c988cecb7aaf6f445ae83c24964735ef4e73e02c Mon Sep 17 00:00:00 2001
+From: Roman Stratiienko <r.stratiienko@gmail.com>
+Date: Sun, 7 May 2023 23:44:31 +0300
+Subject: [PATCH 6/6] Revert "Merge branch '2023-03-27-rockchip-rk3399-fixes'"
+
+This reverts commit aba0eb5b94089757fe5382bf75bc3902b8ce24cf, reversing
+changes made to 523dc2b28f8238840d911802956f30cac967a4b7.
+
+Reason: boot script doesn't parse correctly with it.
+
+Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
+---
+ Kconfig                            | 27 ++++++++++++++
+ arch/arm/Kconfig                   |  3 +-
+ boot/Kconfig                       | 58 ++++++++++--------------------
+ configs/rockpro64-rk3399_defconfig |  5 +++
+ include/configs/rk3399_common.h    |  5 ++-
+ 5 files changed, 55 insertions(+), 43 deletions(-)
+
+diff --git a/Kconfig b/Kconfig
+index 7a8c190a7b..27b998f179 100644
+--- a/Kconfig
++++ b/Kconfig
+@@ -191,6 +191,33 @@ config XEN
+ 
+ 	  [1] - https://xenproject.org/
+ 
++config DISTRO_DEFAULTS
++	bool "Select defaults suitable for booting general purpose Linux distributions"
++	select AUTO_COMPLETE
++	select CMDLINE_EDITING
++	select CMD_BOOTI if ARM64
++	select CMD_BOOTZ if ARM && !ARM64
++	select CMD_DHCP if CMD_NET
++	select CMD_ENV_EXISTS
++	select CMD_EXT2
++	select CMD_EXT4
++	select CMD_FAT
++	select CMD_FS_GENERIC
++	select CMD_PART if PARTITIONS
++	select CMD_PING if CMD_NET
++	select CMD_PXE if NET
++	select CMD_SYSBOOT
++	select ENV_VARS_UBOOT_CONFIG
++	select HUSH_PARSER
++	select SUPPORT_RAW_INITRD
++	select SYS_LONGHELP
++	imply CMD_MII if NET
++	imply USB_STORAGE
++	imply USE_BOOTCOMMAND
++	help
++	  Select this to enable various options and commands which are suitable
++	  for building u-boot for booting general purpose Linux distributions.
++
+ config ENV_VARS_UBOOT_CONFIG
+ 	bool "Add arch, board, vendor and soc variables to default environment"
+ 	help
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index f0118e2254..c51f15fcf4 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -1956,8 +1956,7 @@ config ARCH_ROCKCHIP
+ 	imply ADC
+ 	imply CMD_DM
+ 	imply DEBUG_UART_BOARD_INIT
+-	imply DISTRO_DEFAULTS if !ROCKCHIP_RK3399
+-	imply BOOTSTD_DEFAULTS if !DISTRO_DEFAULTS
++	imply DISTRO_DEFAULTS
+ 	imply FAT_WRITE
+ 	imply SARADC_ROCKCHIP
+ 	imply SPL_SYSRESET
+diff --git a/boot/Kconfig b/boot/Kconfig
+index d95a2a7026..d646369f55 100644
+--- a/boot/Kconfig
++++ b/boot/Kconfig
+@@ -350,32 +350,6 @@ config PXE_UTILS
+ 	help
+ 	  Utilities for parsing PXE file formats.
+ 
+-config BOOT_DEFAULTS
+-	bool  # Common defaults for standard boot and distroboot
+-	imply USE_BOOTCOMMAND
+-	select CMD_ENV_EXISTS
+-	select CMD_EXT2
+-	select CMD_EXT4
+-	select CMD_FAT
+-	select CMD_FS_GENERIC
+-	select CMD_PART if PARTITIONS
+-	select CMD_DHCP if CMD_NET
+-	select CMD_PING if CMD_NET
+-	select CMD_PXE if CMD_NET
+-	select SUPPORT_RAW_INITRD
+-	select ENV_VARS_UBOOT_CONFIG
+-	select CMD_BOOTI if ARM64
+-	select CMD_BOOTZ if ARM && !ARM64
+-	imply CMD_MII if NET
+-	imply USB_STORAGE
+-	imply EFI_PARTITION
+-	imply ISO_PARTITION
+-	help
+-	  These are not required but are commonly needed to support a good
+-	  selection of booting methods. Enable this to improve the capability
+-	  of U-Boot to boot various images. Currently much functionality is
+-	  tied to enabling the command that exercises it.
+-
+ config BOOTSTD
+ 	bool "Standard boot support"
+ 	default y
+@@ -436,7 +410,24 @@ config BOOTSTD_DEFAULTS
+ 	bool "Select some common defaults for standard boot"
+ 	depends on BOOTSTD
+ 	imply USE_BOOTCOMMAND
+-	select BOOT_DEFAULTS
++	# Bring in some defaults which are generally needed. Boards can drop
++	# these as needed to save code space. Bootstd does not generally require
++	# the commands themselves to be enabled, but this is how some of the
++	# functionality is controlled at present
++	imply CMD_EXT2
++	imply CMD_EXT4
++	imply CMD_FAT
++	imply CMD_FS_GENERIC
++	imply CMD_PART
++	imply CMD_DHCP if NET
++	imply CMD_MII if NET
++	imply CMD_PING if NET
++	imply CMD_PXE if NET
++	imply USB_STORAGE
++	imply SUPPORT_RAW_INITRD
++	imply ENV_VARS_UBOOT_CONFIG
++	imply EFI_PARTITION
++	imply ISO_PARTITION
+ 	help
+ 	  These are not required but are commonly needed to support a good
+ 	  selection of booting methods. Enable this to improve the capability
+@@ -843,25 +834,12 @@ config SYS_BOOT_RAMDISK_HIGH
+ 	depends on CMD_BOOTM || CMD_BOOTI || CMD_BOOTZ
+ 	depends on !(NIOS2 || SANDBOX || SH || XTENSA)
+ 	def_bool y
+-	select LMB
+ 	help
+ 	  Enable initrd_high functionality.  If defined then the initrd_high
+ 	  feature is enabled and the boot* ramdisk subcommand is enabled.
+ 
+ endmenu		# Boot images
+ 
+-config DISTRO_DEFAULTS
+-	bool "Select defaults suitable for booting general purpose Linux distributions"
+-	select BOOT_DEFAULTS
+-	select AUTO_COMPLETE
+-	select CMDLINE_EDITING
+-	select CMD_SYSBOOT
+-	select HUSH_PARSER
+-	select SYS_LONGHELP
+-	help
+-	  Select this to enable various options and commands which are suitable
+-	  for building u-boot for booting general purpose Linux distributions.
+-
+ menu "Boot timing"
+ 
+ config BOOTSTAGE
+diff --git a/configs/rockpro64-rk3399_defconfig b/configs/rockpro64-rk3399_defconfig
+index 4961423681..dd67f9dff6 100644
+--- a/configs/rockpro64-rk3399_defconfig
++++ b/configs/rockpro64-rk3399_defconfig
+@@ -13,6 +13,7 @@ CONFIG_DM_RESET=y
+ CONFIG_ROCKCHIP_RK3399=y
+ CONFIG_TARGET_ROCKPRO64_RK3399=y
+ CONFIG_SPL_STACK=0x400000
++CONFIG_BOOTSTAGE_STASH_ADDR=0xff8e0000
+ CONFIG_DEBUG_UART_BASE=0xFF1A0000
+ CONFIG_DEBUG_UART_CLOCK=24000000
+ CONFIG_SPL_SPI_FLASH_SUPPORT=y
+@@ -20,7 +21,11 @@ CONFIG_SPL_SPI=y
+ CONFIG_SYS_LOAD_ADDR=0x800800
+ CONFIG_DEBUG_UART=y
+ CONFIG_BOOTSTAGE=y
++CONFIG_SPL_BOOTSTAGE=y
++CONFIG_TPL_BOOTSTAGE=y
+ CONFIG_BOOTSTAGE_REPORT=y
++CONFIG_SPL_BOOTSTAGE_RECORD_COUNT=10
++CONFIG_BOOTSTAGE_STASH=y
+ CONFIG_USE_PREBOOT=y
+ CONFIG_DEFAULT_FDT_FILE="rockchip/rk3399-rockpro64.dtb"
+ CONFIG_DISPLAY_BOARDINFO_LATE=y
+diff --git a/include/configs/rk3399_common.h b/include/configs/rk3399_common.h
+index 96ba19c659..04dcbf20bc 100644
+--- a/include/configs/rk3399_common.h
++++ b/include/configs/rk3399_common.h
+@@ -52,7 +52,10 @@
+ 	"fdtfile=" CONFIG_DEFAULT_FDT_FILE "\0" \
+ 	"partitions=" PARTS_DEFAULT \
+ 	ROCKCHIP_DEVICE_SETTINGS \
+-	"boot_targets=" BOOT_TARGETS "\0"
++	"boot_targets=" BOOT_TARGETS "\0" \
++	"altbootcmd=" \
++		"setenv boot_syslinux_conf extlinux/extlinux-rollback.conf;" \
++		"run distro_bootcmd\0"
+ 
+ #endif
+ 
+-- 
+2.37.2
+

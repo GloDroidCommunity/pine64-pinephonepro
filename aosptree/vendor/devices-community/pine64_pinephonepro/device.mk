@@ -6,7 +6,7 @@ $(call inherit-product, glodroid/configuration/common/device-common.mk)
 
 # Firmware
 PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/firmware/dptx.bin:$(TARGET_COPY_OUT_VENDOR)/etc/firmware/rockchip/dptx.bin \
+    $(LOCAL_PATH)/firmware/dptx.bin:$(TARGET_COPY_OUT_RAMDISK)/vendor/etc/firmware/rockchip/dptx.bin \
     $(LOCAL_PATH)/firmware/regulatory.db:$(TARGET_COPY_OUT_VENDOR)/etc/firmware/regulatory.db \
     $(LOCAL_PATH)/firmware/regulatory.db.p7s:$(TARGET_COPY_OUT_VENDOR)/etc/firmware/regulatory.db.p7s \
     $(LOCAL_PATH)/firmware/brcmfmac43455-sdio.bin:$(TARGET_COPY_OUT_VENDOR)/etc/firmware/brcm/brcmfmac43455-sdio.bin \
