@@ -129,6 +129,7 @@ class Lights : public BnLights {
         int recived_brughtness_shift = max_shift - (MAX_BRIGHTNESS - (current_brightness & 0xFF));
         int recived_brightness_persent = (recived_brughtness_shift * 100) / max_shift;
         int calculated = (SYS_MAX_BRIGHTNESS * recived_brightness_persent) / 100;
+        if (calculated < 280) calculated = 280;
         return calculated > SYS_MAX_BRIGHTNESS ? SYS_MAX_BRIGHTNESS : calculated;
     }
 
