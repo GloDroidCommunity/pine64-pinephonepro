@@ -1,0 +1,421 @@
+From 2cc657b463be5e848ae27f51d81773a4ae76a7ba Mon Sep 17 00:00:00 2001
+From: Roman Stratiienko <r.stratiienko@gmail.com>
+Date: Thu, 1 Jun 2023 18:05:40 +0300
+Subject: [PATCH] camera: Remove board-specific configuration and patches
+
+Keep only simple camera pipeline.
+
+Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
+---
+ common/camera/board.mk                        |   4 +-
+ ...-pipeline-raspberrypi-Support-color-.patch | 154 ------------------
+ ...pipeline-set-cfg.bufferCount-to-some.patch |  31 ----
+ ...-handle-structure-to-obtain-strides-.patch | 145 -----------------
+ ...dd-ljpeg-argument-when-building-liby.patch |  29 ----
+ 5 files changed, 1 insertion(+), 362 deletions(-)
+ delete mode 100644 common/camera/patches-libcamera/0001-Revert-libcamera-pipeline-raspberrypi-Support-color-.patch
+ delete mode 100644 common/camera/patches-libcamera/0002-WIP-RaspberryPI-pipeline-set-cfg.bufferCount-to-some.patch
+ delete mode 100644 common/camera/patches-libcamera/0003-HACK-Use-minigbm-handle-structure-to-obtain-strides-.patch
+ delete mode 100644 common/camera/patches-libcamera/0004-GLODROID-Don-t-add-ljpeg-argument-when-building-liby.patch
+
+diff --git a/common/camera/board.mk b/common/camera/board.mk
+index a9db0ed..0628bba 100644
+--- a/common/camera/board.mk
++++ b/common/camera/board.mk
+@@ -8,9 +8,7 @@ BCC_PATH := $(patsubst $(CURDIR)/%,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)
+ 
+ BOARD_BUILD_AOSPEXT_LIBCAMERA := true
+ BOARD_LIBCAMERA_SRC_DIR := glodroid/vendor/libcamera
+-BOARD_LIBCAMERA_PATCHES_DIRS := $(BCC_PATH)/patches-libcamera
+-BOARD_LIBCAMERA_IPAS := raspberrypi
+-BOARD_LIBCAMERA_PIPELINES := simple raspberrypi
++BOARD_LIBCAMERA_PIPELINES ?= simple
+ 
+ DEVICE_MANIFEST_FILE += $(BCC_PATH)/android.hardware.camera.provider@2.5.xml
+ 
+diff --git a/common/camera/patches-libcamera/0001-Revert-libcamera-pipeline-raspberrypi-Support-color-.patch b/common/camera/patches-libcamera/0001-Revert-libcamera-pipeline-raspberrypi-Support-color-.patch
+deleted file mode 100644
+index 4065680..0000000
+--- a/common/camera/patches-libcamera/0001-Revert-libcamera-pipeline-raspberrypi-Support-color-.patch
++++ /dev/null
+@@ -1,154 +0,0 @@
+-From da7dd51d90b6a93a7bf9e68329b6080d77fea407 Mon Sep 17 00:00:00 2001
+-From: Roman Stratiienko <r.stratiienko@gmail.com>
+-Date: Fri, 23 Sep 2022 19:14:49 +0300
+-Subject: [PATCH 1/3] Revert "libcamera: pipeline: raspberrypi: Support color
+- spaces"
+-
+-This reverts commit 13fdf9d0dcd371e8b348e234847b133494be615d.
+----
+- .../pipeline/raspberrypi/raspberrypi.cpp      | 40 -------------------
+- 1 file changed, 40 deletions(-)
+-
+-diff --git a/src/libcamera/pipeline/raspberrypi/raspberrypi.cpp b/src/libcamera/pipeline/raspberrypi/raspberrypi.cpp
+-index 087c71b65700c6..c9514a5f084d72 100644
+---- a/src/libcamera/pipeline/raspberrypi/raspberrypi.cpp
+-+++ b/src/libcamera/pipeline/raspberrypi/raspberrypi.cpp
+-@@ -107,7 +107,6 @@ V4L2DeviceFormat toV4L2DeviceFormat(const V4L2VideoDevice *dev,
+- 
+- 	deviceFormat.fourcc = dev->toV4L2PixelFormat(pix);
+- 	deviceFormat.size = format.size;
+--	deviceFormat.colorSpace = format.colorSpace;
+- 	return deviceFormat;
+- }
+- 
+-@@ -134,7 +133,6 @@ V4L2SubdeviceFormat findBestFormat(const SensorFormats &formatsMap, const Size &
+- {
+- 	double bestScore = std::numeric_limits<double>::max(), score;
+- 	V4L2SubdeviceFormat bestFormat;
+--	bestFormat.colorSpace = ColorSpace::Raw;
+- 
+- 	constexpr float penaltyAr = 1500.0;
+- 	constexpr float penaltyBitDepth = 500.0;
+-@@ -363,8 +361,6 @@ CameraConfiguration::Status RPiCameraConfiguration::validate()
+- 	if (config_.empty())
+- 		return Invalid;
+- 
+--	status = validateColorSpaces(ColorSpaceFlag::StreamsShareColorSpace);
+--
+- 	/*
+- 	 * What if the platform has a non-90 degree rotation? We can't even
+- 	 * "adjust" the configuration and carry on. Alternatively, raising an
+-@@ -532,25 +528,11 @@ CameraConfiguration::Status RPiCameraConfiguration::validate()
+- 		V4L2DeviceFormat format;
+- 		format.fourcc = dev->toV4L2PixelFormat(cfg.pixelFormat);
+- 		format.size = cfg.size;
+--		format.colorSpace = cfg.colorSpace;
+--
+--		LOG(RPI, Debug)
+--			<< "Try color space " << ColorSpace::toString(cfg.colorSpace);
+- 
+- 		int ret = dev->tryFormat(&format);
+- 		if (ret)
+- 			return Invalid;
+- 
+--		if (cfg.colorSpace != format.colorSpace) {
+--			status = Adjusted;
+--			LOG(RPI, Debug)
+--				<< "Color space changed from "
+--				<< ColorSpace::toString(cfg.colorSpace) << " to "
+--				<< ColorSpace::toString(format.colorSpace);
+--		}
+--
+--		cfg.colorSpace = format.colorSpace;
+--
+- 		cfg.stride = format.planes[0].bpl;
+- 		cfg.frameSize = format.planes[0].size;
+- 
+-@@ -575,7 +557,6 @@ PipelineHandlerRPi::generateConfiguration(Camera *camera, const StreamRoles &rol
+- 	PixelFormat pixelFormat;
+- 	V4L2VideoDevice::Formats fmts;
+- 	Size size;
+--	std::optional<ColorSpace> colorSpace;
+- 
+- 	if (roles.empty())
+- 		return config;
+-@@ -591,7 +572,6 @@ PipelineHandlerRPi::generateConfiguration(Camera *camera, const StreamRoles &rol
+- 			pixelFormat = mbusCodeToPixelFormat(sensorFormat.mbus_code,
+- 							    BayerFormat::Packing::CSI2);
+- 			ASSERT(pixelFormat.isValid());
+--			colorSpace = ColorSpace::Raw;
+- 			bufferCount = 2;
+- 			rawCount++;
+- 			break;
+-@@ -599,12 +579,6 @@ PipelineHandlerRPi::generateConfiguration(Camera *camera, const StreamRoles &rol
+- 		case StreamRole::StillCapture:
+- 			fmts = data->isp_[Isp::Output0].dev()->formats();
+- 			pixelFormat = formats::NV12;
+--			/*
+--			 * Still image codecs usually expect the sYCC color space.
+--			 * Even RGB codecs will be fine as the RGB we get with the
+--			 * sYCC color space is the same as sRGB.
+--			 */
+--			colorSpace = ColorSpace::Sycc;
+- 			/* Return the largest sensor resolution. */
+- 			size = sensorSize;
+- 			bufferCount = 1;
+-@@ -622,11 +596,6 @@ PipelineHandlerRPi::generateConfiguration(Camera *camera, const StreamRoles &rol
+- 			 */
+- 			fmts = data->isp_[Isp::Output0].dev()->formats();
+- 			pixelFormat = formats::YUV420;
+--			/*
+--			 * Choose a color space appropriate for video recording.
+--			 * Rec.709 will be a good default for HD resolutions.
+--			 */
+--			colorSpace = ColorSpace::Rec709;
+- 			size = { 1920, 1080 };
+- 			bufferCount = 4;
+- 			outCount++;
+-@@ -635,7 +604,6 @@ PipelineHandlerRPi::generateConfiguration(Camera *camera, const StreamRoles &rol
+- 		case StreamRole::Viewfinder:
+- 			fmts = data->isp_[Isp::Output0].dev()->formats();
+- 			pixelFormat = formats::ARGB8888;
+--			colorSpace = ColorSpace::Sycc;
+- 			size = { 800, 600 };
+- 			bufferCount = 4;
+- 			outCount++;
+-@@ -683,7 +651,6 @@ PipelineHandlerRPi::generateConfiguration(Camera *camera, const StreamRoles &rol
+- 		StreamConfiguration cfg(formats);
+- 		cfg.size = size;
+- 		cfg.pixelFormat = pixelFormat;
+--		cfg.colorSpace = colorSpace;
+- 		cfg.bufferCount = bufferCount;
+- 		config->addConfiguration(cfg);
+- 	}
+-@@ -793,7 +760,6 @@ int PipelineHandlerRPi::configure(Camera *camera, CameraConfiguration *config)
+- 		V4L2PixelFormat fourcc = stream->dev()->toV4L2PixelFormat(cfg.pixelFormat);
+- 		format.size = cfg.size;
+- 		format.fourcc = fourcc;
+--		format.colorSpace = cfg.colorSpace;
+- 
+- 		LOG(RPI, Debug) << "Setting " << stream->name() << " to "
+- 				<< format;
+-@@ -809,10 +775,6 @@ int PipelineHandlerRPi::configure(Camera *camera, CameraConfiguration *config)
+- 			return -EINVAL;
+- 		}
+- 
+--		LOG(RPI, Debug)
+--			<< "Stream " << stream->name() << " has color space "
+--			<< ColorSpace::toString(cfg.colorSpace);
+--
+- 		cfg.setStream(stream);
+- 		stream->setExternal(true);
+- 
+-@@ -839,8 +801,6 @@ int PipelineHandlerRPi::configure(Camera *camera, CameraConfiguration *config)
+- 		format = {};
+- 		format.size = maxSize;
+- 		format.fourcc = dev->toV4L2PixelFormat(formats::YUV420);
+--		/* No one asked for output, so the color space doesn't matter. */
+--		format.colorSpace = ColorSpace::Sycc;
+- 		ret = dev->setFormat(&format);
+- 		if (ret) {
+- 			LOG(RPI, Error)
+--- 
+-2.37.2
+-
+diff --git a/common/camera/patches-libcamera/0002-WIP-RaspberryPI-pipeline-set-cfg.bufferCount-to-some.patch b/common/camera/patches-libcamera/0002-WIP-RaspberryPI-pipeline-set-cfg.bufferCount-to-some.patch
+deleted file mode 100644
+index d283f72..0000000
+--- a/common/camera/patches-libcamera/0002-WIP-RaspberryPI-pipeline-set-cfg.bufferCount-to-some.patch
++++ /dev/null
+@@ -1,31 +0,0 @@
+-From 3a567bb01320053c082b59486b22a049ae8c8677 Mon Sep 17 00:00:00 2001
+-From: Roman Stratiienko <r.stratiienko@gmail.com>
+-Date: Thu, 4 Nov 2021 14:46:18 +0200
+-Subject: [PATCH 2/3] WIP: RaspberryPI pipeline: set cfg.bufferCount to some
+- value
+-
+-Otherwise Android framework will fail to configure camera.
+-
+-Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
+----
+- src/libcamera/pipeline/raspberrypi/raspberrypi.cpp | 2 +-
+- 1 file changed, 1 insertion(+), 1 deletion(-)
+-
+-diff --git a/src/libcamera/pipeline/raspberrypi/raspberrypi.cpp b/src/libcamera/pipeline/raspberrypi/raspberrypi.cpp
+-index c9514a5f084d72..1fadd039768f6e 100644
+---- a/src/libcamera/pipeline/raspberrypi/raspberrypi.cpp
+-+++ b/src/libcamera/pipeline/raspberrypi/raspberrypi.cpp
+-@@ -463,9 +463,9 @@ CameraConfiguration::Status RPiCameraConfiguration::validate()
+- 
+- 			cfg.stride = unicamFormat.planes[0].bpl;
+- 			cfg.frameSize = unicamFormat.planes[0].size;
+--
+- 			rawCount++;
+- 		} else {
+-+			cfg.bufferCount = 1;
+- 			outSize[outCount] = std::make_pair(count, cfg.size);
+- 			/* Record the largest resolution for fixups later. */
+- 			if (maxSize < cfg.size) {
+--- 
+-2.37.2
+-
+diff --git a/common/camera/patches-libcamera/0003-HACK-Use-minigbm-handle-structure-to-obtain-strides-.patch b/common/camera/patches-libcamera/0003-HACK-Use-minigbm-handle-structure-to-obtain-strides-.patch
+deleted file mode 100644
+index f24ea26..0000000
+--- a/common/camera/patches-libcamera/0003-HACK-Use-minigbm-handle-structure-to-obtain-strides-.patch
++++ /dev/null
+@@ -1,145 +0,0 @@
+-From 0be990fa35a72d53939e6c819bbdafaea882c90c Mon Sep 17 00:00:00 2001
+-From: Roman Stratiienko <r.stratiienko@gmail.com>
+-Date: Thu, 4 Nov 2021 14:42:00 +0200
+-Subject: [PATCH 3/3] HACK: Use minigbm handle structure to obtain
+- strides/offsets/sizes
+-
+-Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
+----
+- src/android/mm/cros_gralloc_handle.h     | 51 ++++++++++++++++++++++++
+- src/android/mm/generic_camera_buffer.cpp | 30 ++++++--------
+- 2 files changed, 64 insertions(+), 17 deletions(-)
+- create mode 100644 src/android/mm/cros_gralloc_handle.h
+-
+-diff --git a/src/android/mm/cros_gralloc_handle.h b/src/android/mm/cros_gralloc_handle.h
+-new file mode 100644
+-index 00000000000000..2b70d4baaf9bda
+---- /dev/null
+-+++ b/src/android/mm/cros_gralloc_handle.h
+-@@ -0,0 +1,51 @@
+-+/*
+-+ * Copyright 2016 The Chromium OS Authors. All rights reserved.
+-+ * Use of this source code is governed by a BSD-style license that can be
+-+ * found in the LICENSE file.
+-+ */
+-+
+-+#ifndef CROS_GRALLOC_HANDLE_H
+-+#define CROS_GRALLOC_HANDLE_H
+-+
+-+#include <cstdint>
+-+#include <cutils/native_handle.h>
+-+
+-+#define DRV_MAX_PLANES 4
+-+#define DRV_MAX_FDS (DRV_MAX_PLANES + 1)
+-+
+-+struct cros_gralloc_handle : public native_handle_t {
+-+	/*
+-+	 * File descriptors must immediately follow the native_handle_t base and used file
+-+	 * descriptors must be packed at the beginning of this array to work with
+-+	 * native_handle_clone().
+-+	 *
+-+	 * This field contains 'num_planes' plane file descriptors followed by an optional metadata
+-+	 * reserved region file descriptor if 'reserved_region_size' is greater than zero.
+-+	 */
+-+	int32_t fds[DRV_MAX_FDS];
+-+	uint32_t strides[DRV_MAX_PLANES];
+-+	uint32_t offsets[DRV_MAX_PLANES];
+-+	uint32_t sizes[DRV_MAX_PLANES];
+-+	uint32_t id;
+-+	uint32_t width;
+-+	uint32_t height;
+-+	uint32_t format; /* DRM format */
+-+	uint32_t tiling;
+-+	uint64_t format_modifier;
+-+	uint64_t use_flags; /* Buffer creation flags */
+-+	uint32_t magic;
+-+	uint32_t pixel_stride;
+-+	int32_t droid_format;
+-+	int32_t usage; /* Android usage. */
+-+	uint32_t num_planes;
+-+	uint64_t reserved_region_size;
+-+	uint64_t total_size; /* Total allocation size */
+-+	/*
+-+	 * Name is a null terminated char array located at handle->base.data[handle->name_offset].
+-+	 */
+-+	uint32_t name_offset;
+-+} __attribute__((packed));
+-+
+-+typedef const struct cros_gralloc_handle *cros_gralloc_handle_t;
+-+
+-+#endif
+-diff --git a/src/android/mm/generic_camera_buffer.cpp b/src/android/mm/generic_camera_buffer.cpp
+-index 1bd7090d634f13..dd78d5f0fbe71c 100644
+---- a/src/android/mm/generic_camera_buffer.cpp
+-+++ b/src/android/mm/generic_camera_buffer.cpp
+-@@ -10,6 +10,8 @@
+- #include <sys/mman.h>
+- #include <unistd.h>
+- 
+-+#include "cros_gralloc_handle.h"
+-+
+- #include <libcamera/base/log.h>
+- 
+- #include "libcamera/internal/formats.h"
+-@@ -70,6 +72,8 @@ CameraBuffer::Private::Private([[maybe_unused]] CameraBuffer *cameraBuffer,
+- 		return;
+- 	}
+- 
+-+	auto cros_handle = reinterpret_cast<cros_gralloc_handle_t>(camera3Buffer);
+-+
+- 	/*
+- 	 * As Android doesn't offer an API to query buffer layouts, assume for
+- 	 * now that the buffer is backed by a single dmabuf, with planes being
+-@@ -79,13 +83,7 @@ CameraBuffer::Private::Private([[maybe_unused]] CameraBuffer *cameraBuffer,
+- 		if (camera3Buffer->data[i] == -1 || camera3Buffer->data[i] == fd_)
+- 			continue;
+- 
+--		if (fd_ != -1) {
+--			error_ = -EINVAL;
+--			LOG(HAL, Error) << "Discontiguous planes are not supported";
+--			return;
+--		}
+--
+--		fd_ = camera3Buffer->data[i];
+-+		fd_ = camera3Buffer->data[0];
+- 	}
+- 
+- 	if (fd_ == -1) {
+-@@ -101,26 +99,24 @@ CameraBuffer::Private::Private([[maybe_unused]] CameraBuffer *cameraBuffer,
+- 		return;
+- 	}
+- 
+--	const unsigned int numPlanes = info.numPlanes();
+-+	const unsigned int numPlanes = cros_handle->num_planes;
+- 	planeInfo_.resize(numPlanes);
+- 
+--	unsigned int offset = 0;
+- 	for (unsigned int i = 0; i < numPlanes; ++i) {
+--		const unsigned int planeSize = info.planeSize(size, i);
+-+		const unsigned int planeSize = cros_handle->sizes[i];
+- 
+--		planeInfo_[i].stride = info.stride(size.width, i, 1u);
+--		planeInfo_[i].offset = offset;
+--		planeInfo_[i].size = planeSize;
+-+		planeInfo_[i].stride = cros_handle->strides[i];
+-+		planeInfo_[i].offset = cros_handle->offsets[i];
+-+		planeInfo_[i].size = cros_handle->sizes[i];
+- 
+--		if (bufferLength_ < offset + planeSize) {
+-+		if (bufferLength_ < planeInfo_[i].offset + planeInfo_[i].size) {
+- 			LOG(HAL, Error) << "Plane " << i << " is out of buffer:"
+--					<< " plane offset=" << offset
+--					<< ", plane size=" << planeSize
+-+					<< " plane offset=" << planeInfo_[i].offset
+-+					<< ", plane size=" << planeInfo_[i].size
+- 					<< ", buffer length=" << bufferLength_;
+- 			return;
+- 		}
+- 
+--		offset += planeSize;
+- 	}
+- }
+- 
+--- 
+-2.37.2
+-
+diff --git a/common/camera/patches-libcamera/0004-GLODROID-Don-t-add-ljpeg-argument-when-building-liby.patch b/common/camera/patches-libcamera/0004-GLODROID-Don-t-add-ljpeg-argument-when-building-liby.patch
+deleted file mode 100644
+index 9fa74db..0000000
+--- a/common/camera/patches-libcamera/0004-GLODROID-Don-t-add-ljpeg-argument-when-building-liby.patch
++++ /dev/null
+@@ -1,29 +0,0 @@
+-From fac8e6b2f79e8299eec7d19eb8076aac47276042 Mon Sep 17 00:00:00 2001
+-From: Roman Stratiienko <r.stratiienko@gmail.com>
+-Date: Sat, 3 Dec 2022 13:02:08 +0200
+-Subject: [PATCH] GLODROID: Don't add -ljpeg argument when building libyuv as
+- subproject
+-
+-We don't have sysroot with libdir when building within AOSP.
+-Instead all dependencies are linked directly as path/lib.so link argument.
+-
+-Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
+----
+- src/android/meson.build | 1 -
+- 1 file changed, 1 deletion(-)
+-
+-diff --git a/src/android/meson.build b/src/android/meson.build
+-index 1bba54de..b1b5caa1 100644
+---- a/src/android/meson.build
+-+++ b/src/android/meson.build
+-@@ -29,7 +29,6 @@ if not libyuv_dep.found()
+-          '-Wno-sign-compare',
+-          '-Wno-unused-variable',
+-          '-Wno-unused-parameter')
+--    libyuv_vars.append_link_args('-ljpeg')
+-     libyuv = cmake.subproject('libyuv', options : libyuv_vars)
+-     libyuv_dep = libyuv.dependency('yuv')
+- endif
+--- 
+-2.37.2
+-
+-- 
+2.39.2
+

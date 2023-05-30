@@ -38,8 +38,19 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.iio.magn.af8133j.name=AF8133J_Magnetometer      \
     ro.iio.magn.quirks=no-trig,no-event                \
 
+# Camera
+PRODUCT_PACKAGES += \
+    ipa_rkisp1.so      \
+    ipa_rkisp1.so.sign \
+
+LIBCAMERA_CFGS := $(wildcard glodroid/vendor/libcamera/src/ipa/rkisp1/data/*yaml)
+PRODUCT_COPY_FILES += $(foreach cfg,$(LIBCAMERA_CFGS),$(cfg):$(TARGET_COPY_OUT_VENDOR)/etc/libcamera/ipa/rkisp1/$(notdir $(cfg))$(space))
+
+
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/etc/modem.pinephonepro.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/modem.pinephonepro.rc \
+    $(LOCAL_PATH)/etc/uevent.device.rc:$(TARGET_COPY_OUT_VENDOR)/etc/uevent.device.rc \
+    $(LOCAL_PATH)/etc/camera_hal.yaml:$(TARGET_COPY_OUT_VENDOR)/etc/libcamera/camera_hal.yaml \
 
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/etc/audio.pinephonepro.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio.pine64_pinephonepro.xml \

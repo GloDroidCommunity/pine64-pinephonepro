@@ -15,6 +15,10 @@ BOARD_VENDOR_SEPOLICY_DIRS += $(BC_PATH)/sepolicy/vendor
 BOARD_LIBCAMERA_IPAS := rkisp1
 BOARD_LIBCAMERA_PIPELINES := rkisp1
 
+BOARD_LIBCAMERA_EXTRA_TARGETS := \
+    libetc:libcamera/ipa_rkisp1.so:libcamera:ipa_rkisp1.so:           \
+    libetc:libcamera/ipa_rkisp1.so.sign:libcamera:ipa_rkisp1.so.sign: \
+
 KERNEL_FRAGMENTS := $(BC_PATH)/kernel.config
 KERNEL_DEFCONFIG := $(BC_PATH)/pinephone_pro_defconfig
 

@@ -22,7 +22,7 @@
   <project path="glodroid/vendor/mesa3d"          remote="aosp" name="platform/external/mesa3d"         groups="glodroid" revision="66b438dca11f79a8e54e558a97dc2d10c6b185d2" />
 
   <!-- camera components (vendor) -->
-  <project path="glodroid/vendor/libcamera"                     remote="libcamera" name="libcamera.git"      groups="glodroid" revision="ea8ae5afff226f9373c82c1a3185e532d5d6eda0" />
+  <project path="glodroid/vendor/libcamera"                     remote="libcamera" name="libcamera.git"      groups="glodroid" revision="b9ecd85ed1fee2e9d715368b24592ad3009131d8" />
   <project path="glodroid/vendor/libcamera/subprojects/libyuv"  remote="glodroid"  name="glodroid_forks.git" groups="glodroid" revision="refs/tags/libyuv-v0.8.2" />
   <project path="glodroid/vendor/libcamera/subprojects/libyaml" remote="github"    name="yaml/libyaml.git"   groups="glodroid" revision="refs/tags/0.2.5" />
 

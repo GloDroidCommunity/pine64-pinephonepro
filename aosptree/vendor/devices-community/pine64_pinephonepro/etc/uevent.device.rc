@@ -1,0 +1,19 @@
+# Bluetooth
+/dev/rfkill                                            0660    bluetooth    bluetooth
+
+# Modem
+/dev/ttyUSB0                                           0660    radio        radio
+/dev/ttyUSB1                                           0660    radio        radio
+/dev/ttyUSB2                                           0660    radio        radio
+/dev/ttyUSB3                                           0660    radio        radio
+
+# Sensors
+/dev/iio:device0                                       0660    system       system
+/dev/iio:device1                                       0660    system       system
+/dev/iio:device2                                       0660    system       system
+/dev/iio:device3                                       0660    system       system
+
+# Camera
+/dev/media*                                            0660    system       camera
+/dev/v4l-subdev*                                       0660    system       camera
+/dev/video*                                            0660    system       camera
