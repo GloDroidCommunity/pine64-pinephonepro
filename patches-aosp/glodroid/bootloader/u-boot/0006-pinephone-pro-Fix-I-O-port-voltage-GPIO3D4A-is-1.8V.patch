@@ -1,0 +1,44 @@
+From 5c85eb7303287cd753c7e0a5d1e0aa370c83cc61 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Thu, 25 May 2023 15:27:08 +0200
+Subject: [PATCH] pinephone-pro: Fix I/O port voltage (GPIO3D4A is 1.8V)
+
+This fixes access to camera sensor over I2C during probe time in
+the kernel. (Kernel will fix I/0 port voltage by itself, but the
+timing depends on probe order of the drivers, so the fix can
+come after the camera sensor driver already failed to probe.)
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+Cc: Kever Yang <kever.yang@rock-chips.com>
+Reviewed-by: Kever Yang <kever.yang@rock-chips.com>
+---
+ board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+index 511aa35fa5..7acf24a16a 100644
+--- a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
++++ b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+@@ -18,7 +18,8 @@
+ #include <power/regulator.h>
+ #include <linux/delay.h>
+ 
+-#define GRF_IO_VSEL_BT565_SHIFT 0
++#define GRF_IO_VSEL_BT565_GPIO2AB 1
++#define GRF_IO_VSEL_AUDIO_GPIO3D4A 2
+ #define PMUGRF_CON0_VSEL_SHIFT 8
+ 
+ #define GPIO3_BASE	0xff788000
+@@ -54,7 +55,8 @@ static void setup_iodomain(void)
+ 	   syscon_get_first_range(ROCKCHIP_SYSCON_PMUGRF);
+ 
+ 	/* BT565 is in 1.8v domain */
+-	rk_setreg(&grf->io_vsel, 1 << GRF_IO_VSEL_BT565_SHIFT);
++	rk_setreg(&grf->io_vsel,
++		  GRF_IO_VSEL_BT565_GPIO2AB | GRF_IO_VSEL_AUDIO_GPIO3D4A);
+ 
+ 	/* Set GPIO1 1.8v/3.0v source select to PMU1830_VOL */
+ 	rk_setreg(&pmugrf->soc_con0, 1 << PMUGRF_CON0_VSEL_SHIFT);
+-- 
+2.39.2
+
