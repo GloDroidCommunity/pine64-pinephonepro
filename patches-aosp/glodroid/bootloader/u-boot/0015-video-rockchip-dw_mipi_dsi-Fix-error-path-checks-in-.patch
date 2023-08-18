@@ -1,0 +1,48 @@
+From 6e9c04c98fd2bc99d3d96a8408759847cd966d4d Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sun, 21 May 2023 17:11:48 +0200
+Subject: [PATCH 15/56] video: rockchip: dw_mipi_dsi: Fix error path checks in
+ probe function
+
+Wrong return codes were checked in several places. Check the proper ones.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/video/rockchip/dw_mipi_dsi_rockchip.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+index b1b5328595e..b7d6b51703c 100644
+--- a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
++++ b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+@@ -822,6 +822,7 @@ static int dw_mipi_dsi_rockchip_probe(struct udevice *dev)
+ 
+ 	priv->pclk = devm_clk_get(dev, "pclk");
+ 	if (IS_ERR(priv->pclk)) {
++		ret = PTR_ERR(priv->pclk);
+ 		dev_err(dev, "peripheral clock get error %d\n", ret);
+ 		return ret;
+ 	}
+@@ -833,7 +834,8 @@ static int dw_mipi_dsi_rockchip_probe(struct udevice *dev)
+ 
+ 	} else {
+ 		priv->ref = devm_clk_get(dev, "ref");
+-		if (ret) {
++		if (IS_ERR(priv->ref)) {
++			ret = PTR_ERR(priv->ref);
+ 			dev_err(dev, "pll reference clock get error %d\n", ret);
+ 			return ret;
+ 		}
+@@ -841,7 +843,8 @@ static int dw_mipi_dsi_rockchip_probe(struct udevice *dev)
+ 
+ 	priv->rst = devm_reset_control_get_by_index(device->dev, 0);
+ 	if (IS_ERR(priv->rst)) {
+-		dev_err(dev, "missing dsi hardware reset\n");
++		ret = PTR_ERR(priv->rst);
++		dev_err(dev, "missing dsi hardware reset %d\n", ret);
+ 		return ret;
+ 	}
+ 
+-- 
+2.39.2
+

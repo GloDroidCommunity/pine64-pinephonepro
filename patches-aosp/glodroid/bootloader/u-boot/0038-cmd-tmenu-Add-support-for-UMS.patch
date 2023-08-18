@@ -1,0 +1,89 @@
+From d8b0e3dbc5a0a9f495e4ff4a40b4bbe576fc7186 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Fri, 28 Jul 2023 11:52:04 +0200
+Subject: [PATCH 38/56] cmd: tmenu: Add support for UMS
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ cmd/tmenu.c | 29 +++++++++++++++++++++++++++--
+ 1 file changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/cmd/tmenu.c b/cmd/tmenu.c
+index 7f77e373b25..f8703dda010 100644
+--- a/cmd/tmenu.c
++++ b/cmd/tmenu.c
+@@ -354,6 +354,7 @@ enum {
+ 	ACTION_BOOT = 1,
+ 	ACTION_POWEROFF,
+ 	ACTION_CONSOLE,
++	ACTION_USB_STORAGE,
+ };
+ 
+ struct tmenu_boot_item {
+@@ -371,16 +372,19 @@ static int do_tmenu_bootflow(struct cmd_tbl *cmdtp, int flag, int argc, char *co
+ 	struct udevice *vdev, *tdev, *cdev;
+ 	struct video_priv *vpriv;
+ 	struct touchpanel_touch touches[10];
+-	int cmd_ret = CMD_RET_FAILURE;
++	int cmd_ret;
+ 	int ret;
+ 
++start_again:
++	cmd_ret = CMD_RET_FAILURE;
++
+ 	struct bootstd_priv *std;
+ 	ret = bootstd_get_priv(&std);
+ 	if (ret)
+ 		return CMD_RET_FAILURE;
+ 
+ 	// how many items to reserve
+-	int extra_items = 2;
++	int extra_items = 3;
+ 
+ 	struct tmenu_boot_item items[64] = {};
+ 	int n_items = 0;
+@@ -454,6 +458,12 @@ static int do_tmenu_bootflow(struct cmd_tbl *cmdtp, int flag, int argc, char *co
+ 
+ 	it = &items[n_items++];
+ 
++	it->id = n_items;
++	it->label = "USB access to eMMC";
++	it->action = ACTION_USB_STORAGE;
++
++	it = &items[n_items++];
++
+ 	it->id = n_items;
+ 	it->label = "Power off";
+ 	it->action = ACTION_POWEROFF;
+@@ -576,6 +586,11 @@ next:
+ 				break;
+ 			}
+ 
++			else if (it->action == ACTION_USB_STORAGE) {
++				cmd_ret = CMD_RET_SUCCESS;
++				break;
++			}
++
+ 			else if (it->action == ACTION_POWEROFF) {
+ 				ret = sysreset_walk(SYSRESET_POWER_OFF);
+ 				if (ret == -EINPROGRESS)
+@@ -615,6 +630,16 @@ out_restore_console:
+ 	env_set("stdout", "serial,vidconsole");
+ 	env_set("stderr", "serial,vidconsole");
+ 
++	if (selected >= 0) {
++		struct tmenu_boot_item *it = &items[selected];
++
++		if (it->action == ACTION_USB_STORAGE) {
++			cli_simple_run_command("ums 0 mmc 0", 0);
++			cli_simple_run_command("bootflow scan", 0);
++			goto start_again;
++		}
++	}
++
+ 	return cmd_ret;
+ }
+ 
+-- 
+2.39.2
+

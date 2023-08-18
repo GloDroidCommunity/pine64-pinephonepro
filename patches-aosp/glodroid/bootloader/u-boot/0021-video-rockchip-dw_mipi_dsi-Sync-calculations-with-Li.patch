@@ -1,0 +1,45 @@
+From 52dfd11e9832a1b35cdf491d2da1737fbcd1a9c8 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Mon, 22 May 2023 23:32:47 +0200
+Subject: [PATCH 21/56] video: rockchip: dw_mipi_dsi: Sync calculations with
+ Linux
+
+This was all weird and broken.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/clk/rockchip/clk_rk3399.c             | 2 ++
+ drivers/video/rockchip/dw_mipi_dsi_rockchip.c | 4 ++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/rockchip/clk_rk3399.c b/drivers/clk/rockchip/clk_rk3399.c
+index f748fb5189e..169f9668174 100644
+--- a/drivers/clk/rockchip/clk_rk3399.c
++++ b/drivers/clk/rockchip/clk_rk3399.c
+@@ -976,6 +976,8 @@ static ulong rk3399_clk_get_rate(struct clk *clk)
+ 	case PCLK_WDT:
+ 		rate = rk3399_alive_get_clk(priv->cru);
+ 		break;
++	case SCLK_DPHY_PLL:
++		return 24000000;
+ 	default:
+ 		log_debug("Unknown clock %lu\n", clk->id);
+ 		return -ENOENT;
+diff --git a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+index 117c3db21ac..1bb1c7c67d0 100644
+--- a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
++++ b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+@@ -521,8 +521,8 @@ dw_mipi_dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
+ 
+ 	mpclk = DIV_ROUND_UP(timings->pixelclock.typ, 1000);
+ 	if (mpclk) {
+-		/* take 1 / 0.8, since mbps must big than bandwidth of RGB */
+-		tmp = (mpclk * (bpp / lanes) * 10 / 8) / 1000;
++		/* take 1 / 0.9, since mbps must big than bandwidth of RGB */
++		tmp = (mpclk * (bpp / lanes) * 10 / 9) / 1000;
+ 		if (tmp < max_mbps)
+ 			target_mbps = tmp;
+ 		else
+-- 
+2.39.2
+

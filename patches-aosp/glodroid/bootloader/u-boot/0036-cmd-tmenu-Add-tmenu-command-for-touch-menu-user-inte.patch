@@ -1,0 +1,393 @@
+From 52c7e967fc56a9f952782c3fb26fa8e5c1780019 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megous@megous.com>
+Date: Mon, 9 Jul 2018 08:04:51 +0200
+Subject: [PATCH 36/56] cmd: tmenu: Add tmenu command for touch menu user
+ interface
+
+Shows a menu of items that can be controlled using touch panel.
+This is useful for touch based devices like tablets to select
+alternative boot options (multi-boot).
+
+Signed-off-by: Ondrej Jirman <megous@megous.com>
+---
+ cmd/Kconfig  |   8 ++
+ cmd/Makefile |   1 +
+ cmd/tmenu.c  | 335 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 344 insertions(+)
+ create mode 100644 cmd/tmenu.c
+
+diff --git a/cmd/Kconfig b/cmd/Kconfig
+index ed7dac1442e..c9813750562 100644
+--- a/cmd/Kconfig
++++ b/cmd/Kconfig
+@@ -2188,6 +2188,14 @@ config CMD_TIMER
+ 	help
+ 	  Access the system timer.
+ 
++config CMD_TMENU
++	bool "tmenu - Display boot menu and respond to touch"
++	depends on DM_TOUCHPANEL && VIDEO
++	help
++	  Shows a menu of items that can be controlled using touch panel.
++	  This is useful for touch based devices like tablets to select
++	  alternative boot options (multi-boot).
++
+ config CMD_SOUND
+ 	bool "sound"
+ 	depends on SOUND
+diff --git a/cmd/Makefile b/cmd/Makefile
+index c1193a97f3f..9c7ff807d33 100644
+--- a/cmd/Makefile
++++ b/cmd/Makefile
+@@ -171,6 +171,7 @@ obj-$(CONFIG_CMD_TERMINAL) += terminal.o
+ obj-$(CONFIG_CMD_TIME) += time.o
+ obj-$(CONFIG_CMD_TIMER) += timer.o
+ obj-$(CONFIG_CMD_TOUCH) += touch.o
++obj-$(CONFIG_CMD_TMENU) += tmenu.o
+ obj-$(CONFIG_CMD_TRACE) += trace.o
+ obj-$(CONFIG_HUSH_PARSER) += test.o
+ obj-$(CONFIG_CMD_TPM) += tpm-common.o
+diff --git a/cmd/tmenu.c b/cmd/tmenu.c
+new file mode 100644
+index 00000000000..2d0524be971
+--- /dev/null
++++ b/cmd/tmenu.c
+@@ -0,0 +1,335 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2018 Ondrej Jirman <megous@megous.com>
++ */
++#include <common.h>
++#include <command.h>
++#include <cli_hush.h>
++#include <video.h>
++#include <video_font.h>
++#include <dm/uclass.h>
++#include <dm/device.h>
++#include <linux/delay.h>
++#include <video_font_8x16.h>
++#include <touchpanel.h>
++
++#define VIDEO_FONT_HEIGHT 16
++#define VIDEO_FONT_WIDTH 8
++#define video_fontdata video_fontdata_8x16
++
++// first some generic drawing primitives
++
++struct painter {
++	u8* fb;
++	u8* fb_end;
++	u8* cur;
++	u32 line_length;
++	u32 bpp;
++	u32 rows;
++	u32 cols;
++};
++
++static void painter_set_xy(struct painter* p, uint x, uint y)
++{
++	p->cur = p->fb + min(y, p->rows - 1) * p->line_length + min(x, p->cols - 1) * p->bpp;
++}
++
++static void painter_move_dxy(struct painter* p, int dx, int dy)
++{
++	p->cur += dy * p->line_length + dx * p->bpp;
++
++	if (p->cur >= p->fb_end)
++		p->cur = p->fb_end - 1;
++
++	if (p->cur < p->fb)
++		p->cur = p->fb;
++}
++
++static void painter_rect_fill(struct painter* p, uint w, uint h, u32 color)
++{
++	int x, y;
++	u32* cur;
++
++	for (y = 0; y < h; y++) {
++		cur = (u32*)(p->cur + p->line_length * y);
++
++		for (x = 0; x < w; x++)
++			*(cur++) = color;
++	}
++}
++
++static void painter_line_h(struct painter* p, int dx, u32 color)
++{
++	if (dx < 0) {
++		painter_move_dxy(p, 0, dx);
++		painter_rect_fill(p, 1, -dx, color);
++	} else {
++		painter_rect_fill(p, 1, dx, color);
++		painter_move_dxy(p, 0, dx);
++	}
++}
++
++static void painter_line_v(struct painter* p, int dy, u32 color)
++{
++	if (dy < 0) {
++		painter_move_dxy(p, 0, dy);
++		painter_rect_fill(p, 1, -dy, color);
++	} else {
++		painter_rect_fill(p, 1, dy, color);
++		painter_move_dxy(p, 0, dy);
++	}
++}
++
++static void painter_bigchar(struct painter* p, char ch, u32 color)
++{
++	int i, row;
++	void *line = p->cur;
++
++	for (row = 0; row < VIDEO_FONT_HEIGHT * 2; row++) {
++		uchar bits = video_fontdata[ch * VIDEO_FONT_HEIGHT + row / 2];
++		uint32_t *dst = line;
++
++		for (i = 0; i < VIDEO_FONT_WIDTH; i++) {
++			if (bits & 0x80) {
++				*dst = color;
++				*(dst+1) = color;
++			}
++
++			bits <<= 1;
++			dst+=2;
++		}
++
++		line += p->line_length;
++	}
++
++	painter_move_dxy(p, VIDEO_FONT_WIDTH * 2, 0);
++}
++
++static void painter_char(struct painter* p, char ch, u32 color)
++{
++	int i, row;
++	void *line = p->cur;
++
++	for (row = 0; row < VIDEO_FONT_HEIGHT; row++) {
++		uchar bits = video_fontdata[ch * VIDEO_FONT_HEIGHT + row];
++		uint32_t *dst = line;
++
++		for (i = 0; i < VIDEO_FONT_WIDTH; i++) {
++			if (bits & 0x80)
++				*dst = color;
++
++			bits <<= 1;
++			dst++;
++		}
++
++		line += p->line_length;
++	}
++
++	painter_move_dxy(p, VIDEO_FONT_WIDTH, 0);
++}
++
++// menu command
++
++struct ui_item {
++	int x, y, w, h;
++	char text[40];
++	uint32_t fill;
++	uint32_t text_color;
++	int id;
++};
++
++static void ui_draw(struct ui_item *items, int n_items, struct painter *p)
++{
++	for (int idx = 0; idx < n_items; idx++) {
++                struct ui_item* i = items + idx;
++
++		painter_set_xy(p, i->x, i->y);
++		painter_rect_fill(p, i->w, i->h, i->fill);
++
++		size_t max_chars = i->w / (VIDEO_FONT_WIDTH * 2) - 1;
++
++		max_chars = min(max_chars, strlen(i->text));
++
++		int text_w = i->w - max_chars * VIDEO_FONT_WIDTH * 2;
++		int text_h = i->h - VIDEO_FONT_HEIGHT * 2;
++
++		painter_set_xy(p,
++			       i->x + text_w / 2,
++			       i->y + text_h / 2);
++
++		for (int j = 0; j < max_chars; j++)
++			painter_bigchar(p, i->text[j], i->text_color);
++	}
++}
++
++static struct ui_item* ui_hit_find(struct ui_item* items, int n_items, int x, int y)
++{
++	for (int idx = 0; idx < n_items; idx++) {
++                struct ui_item* i = items + idx;
++
++		if (x >= i->x && x <= i->x + i->w && y >= i->y && y <= i->y + i->h)
++			return i;
++	}
++
++	return NULL;
++}
++
++static int handle_tmenu(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[], int no_touch)
++{
++	struct udevice *vdev, *tdev;
++	struct video_priv *vpriv;
++	struct touchpanel_touch touches[10];
++	int ret;
++
++	if (argc < 2)
++		return CMD_RET_USAGE;
++
++        // set some params: (parse from argv in the future)
++	char* const* items = argv + 1;
++	int n_items = argc - 1;
++
++	ret = uclass_first_device_err(UCLASS_VIDEO, &vdev);
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	if (!no_touch) {
++		ret = uclass_first_device_err(UCLASS_TOUCHPANEL, &tdev);
++		if (ret)
++			return CMD_RET_FAILURE;
++	}
++
++	vpriv = dev_get_uclass_priv(vdev);
++
++	if (vpriv->bpix != VIDEO_BPP32) {
++		printf("tmenu requires 32BPP video device\n");
++		return CMD_RET_FAILURE;
++	}
++
++        struct painter p = {
++		.fb = vpriv->fb,
++		.fb_end = vpriv->fb + vpriv->fb_size,
++		.cur = vpriv->fb,
++		.line_length = vpriv->line_length,
++		.bpp = VNBYTES(vpriv->bpix),
++		.cols = vpriv->xsize,
++		.rows = vpriv->ysize,
++	};
++
++	// prepare ui_items and lay them out
++	struct ui_item ui_items[n_items];
++        int border = 40, max_total_h = min(800, vpriv->ysize - 2 * border);
++        int gap = 10;
++
++        int cols = 1;
++        while ((max_total_h - gap * (DIV_ROUND_UP(n_items, cols) - 1)) / DIV_ROUND_UP(n_items, cols) < 100)
++                cols++;
++        int rows = DIV_ROUND_UP(n_items, cols);
++
++        int item_h = (max_total_h - gap * (DIV_ROUND_UP(n_items, cols) - 1)) / rows;
++        int item_w = (vpriv->xsize - 2 * border - (cols - 1) * gap) / cols;
++
++        int top = vpriv->ysize - border - rows * (item_h + gap) - gap;
++
++        for (int idx = 0; idx < n_items; idx++) {
++                struct ui_item *i = ui_items + idx;
++
++                int col = idx % cols;
++                int row = idx / cols;
++
++                i->x = border + col * (gap + item_w);
++                i->y = top + row * (gap + item_h);
++                i->w = item_w;
++                i->h = item_h;
++                i->fill = 0xff755f10;
++                i->text_color = 0xffffffff;
++                i->id = idx;
++
++		snprintf(i->text, sizeof i->text, "%s", items[idx]);
++
++		//printf("ui_item[%d] x=%d y=%d w=%d h=%d text=%s\n", idx, i->x, i->y, i->w, i->h, i->text);
++	}
++
++	int selected = -1;
++	int redraw = 1;
++
++	if (!no_touch) {
++		ret = touchpanel_start(tdev);
++		if (ret < 0) {
++			printf("Failed to start %s, err=%d\n", tdev->name, ret);
++			return CMD_RET_FAILURE;
++		}
++	}
++
++next:
++	while (1) {
++		if (redraw) {
++			ui_draw(ui_items, n_items, &p);
++			video_sync(vdev, true);
++			redraw = 0;
++		}
++
++		if (no_touch)
++			return CMD_RET_SUCCESS;
++
++		// don't be too busy reading i2c
++		udelay(50 * 1000);
++
++		// handle input
++		ret = touchpanel_get_touches(tdev, touches, ARRAY_SIZE(touches));
++		if (ret < 0) {
++			printf("Failed to get touches from %s, err=%d\n", tdev->name, ret);
++			return CMD_RET_FAILURE;
++		}
++
++		/* find first matching tap down */
++		for (int idx = 0; idx < ret; idx++) {
++			int tx = touches[idx].x;
++			int ty = touches[idx].y;
++
++			struct ui_item* hit = ui_hit_find(ui_items, n_items, tx, ty);
++			if (hit) {
++				selected = hit->id;
++				hit->fill = 0xffb19019;
++				redraw = 1;
++				goto next;
++			}
++		}
++
++		if (selected != -1) {
++			// we are done
++			char buf[16];
++			snprintf(buf, sizeof buf, "ret=%d", selected);
++			set_local_var(buf, 1);
++			selected = -1;
++			redraw = 1;
++			break;
++		}
++	}
++
++	ret = touchpanel_stop(tdev);
++	if (ret < 0) {
++		printf("Failed to stop %s, err=%d\n", tdev->name, ret);
++		return CMD_RET_FAILURE;
++	}
++
++	return CMD_RET_SUCCESS;
++}
++
++static int do_tmenu_render(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	return handle_tmenu(cmdtp, flag, argc, argv, 1);
++}
++
++static int do_tmenu_input(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	return handle_tmenu(cmdtp, flag, argc, argv, 0);
++}
++
++static int do_tmenu(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	return handle_tmenu(cmdtp, flag, argc, argv, 0);
++}
++
++U_BOOT_CMD(tmenu, 30, 1, do_tmenu, "tmenu", "tmenu item1 [item2...] - show touch menu and wait for input");
++U_BOOT_CMD(tmenu_render, 30, 1, do_tmenu_render, "tmenu_render", "tmenu_render item1 [item2...] - show touch menu");
++U_BOOT_CMD(tmenu_input, 30, 1, do_tmenu_input, "tmenu_input", "tmenu_input item1 [item2...] - wait for touch menu input");
+-- 
+2.39.2
+

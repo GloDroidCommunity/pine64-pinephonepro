@@ -1,0 +1,33 @@
+From edbb2e1ca53a651c0696928023c1b6a7091003ae Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Mon, 22 May 2023 23:32:28 +0200
+Subject: [PATCH 18/56] video: rockchip: dw_mipi_dsi: Correct check for lacking
+ phy phandle
+
+If phy is not defined in DT (eg. on rk3399), generic_phy_get_by_name
+will return -ENODATA. Handle that case correctly.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/video/rockchip/dw_mipi_dsi_rockchip.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+index 6d8b1e6f541..fd885ac8ccb 100644
+--- a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
++++ b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+@@ -814,9 +814,9 @@ static int dw_mipi_dsi_rockchip_probe(struct udevice *dev)
+ 	 * NULL if it's not initialized.
+ 	 */
+ 	ret = generic_phy_get_by_name(dev, "dphy", &priv->phy);
+-	if ((ret) && (ret != -ENODEV)) {
++	if (ret && ret != -ENODATA) {
+ 		dev_err(dev, "failed to get mipi dphy: %d\n", ret);
+-		return -EINVAL;
++		return ret;
+ 	}
+ 
+ 	priv->pclk = devm_clk_get(dev, "pclk");
+-- 
+2.39.2
+

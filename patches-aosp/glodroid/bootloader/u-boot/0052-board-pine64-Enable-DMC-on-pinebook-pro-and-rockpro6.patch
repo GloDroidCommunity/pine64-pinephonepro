@@ -1,0 +1,64 @@
+From f0c15c0df0ecffc5ffe0403e4b80368b644a7fde Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Thu, 27 Jul 2023 22:06:18 +0200
+Subject: [PATCH 52/56] board: pine64: Enable DMC on pinebook pro and rockpro64
+
+Automatically enabled DMC node in the kernel when using rkbin blobs
+that support DMC.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ .../pinebook-pro-rk3399/pinebook-pro-rk3399.c      | 14 ++++++++++++++
+ board/pine64/rockpro64_rk3399/rockpro64-rk3399.c   | 14 ++++++++++++++
+ 2 files changed, 28 insertions(+)
+
+diff --git a/board/pine64/pinebook-pro-rk3399/pinebook-pro-rk3399.c b/board/pine64/pinebook-pro-rk3399/pinebook-pro-rk3399.c
+index 516292aaa59..c1c4bbcf66b 100644
+--- a/board/pine64/pinebook-pro-rk3399/pinebook-pro-rk3399.c
++++ b/board/pine64/pinebook-pro-rk3399/pinebook-pro-rk3399.c
+@@ -38,6 +38,20 @@ out:
+ }
+ #endif
+ 
++#ifdef CONFIG_OF_BOARD_SETUP
++int ft_board_setup(void *blob, struct bd_info *bd)
++{
++#ifdef CONFIG_ROCKCHIP_EXTERNAL_TPL
++	int rc = fdt_find_and_setprop(blob, "/memory-controller",
++					"status", "okay", sizeof("okay"), 1);
++	if (rc)
++		printf("Unable to enable DMC err=%s\n", fdt_strerror(rc));
++#endif
++
++	return 0;
++}
++#endif
++
+ #ifdef CONFIG_MISC_INIT_R
+ static void setup_iodomain(void)
+ {
+diff --git a/board/pine64/rockpro64_rk3399/rockpro64-rk3399.c b/board/pine64/rockpro64_rk3399/rockpro64-rk3399.c
+index d79084614f1..7ab6c0e77eb 100644
+--- a/board/pine64/rockpro64_rk3399/rockpro64-rk3399.c
++++ b/board/pine64/rockpro64_rk3399/rockpro64-rk3399.c
+@@ -54,3 +54,17 @@ int misc_init_r(void)
+ }
+ 
+ #endif
++
++#ifdef CONFIG_OF_BOARD_SETUP
++int ft_board_setup(void *blob, struct bd_info *bd)
++{
++#ifdef CONFIG_ROCKCHIP_EXTERNAL_TPL
++	int rc = fdt_find_and_setprop(blob, "/memory-controller",
++					"status", "okay", sizeof("okay"), 1);
++	if (rc)
++		printf("Unable to enable DMC err=%s\n", fdt_strerror(rc));
++#endif
++
++	return 0;
++}
++#endif
+-- 
+2.39.2
+

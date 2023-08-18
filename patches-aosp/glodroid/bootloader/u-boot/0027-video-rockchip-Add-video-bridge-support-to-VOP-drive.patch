@@ -1,0 +1,188 @@
+From 8e78225a9547d7f904c9c5d48009efea056dc41d Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sun, 21 May 2023 17:14:29 +0200
+Subject: [PATCH 27/56] video: rockchip: Add video bridge support to VOP driver
+
+This is used for video output using video bridge implementation of
+MIPI-DSI, like with the recently added dw_mipi_dsi_rockchip.c
+driver.
+
+The original code path when the UCLASS_DISPLAY device is found is
+untouched. The video bridge branch is taken only when the
+UCLASS_VIDEO_BRIDGE device is found at the remote endpoint's parent.
+
+This was tested to work on Pinephone Pro.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+Cc: Anatolij Gustschin <agust@denx.de>
+Cc: Simon Glass <sjg@chromium.org>
+Cc: Philipp Tomsich <philipp.tomsich@vrull.eu>
+Cc: Kever Yang <kever.yang@rock-chips.com>
+Cc: Chris Morgan <macromorgan@hotmail.com>
+---
+ drivers/video/rockchip/Kconfig  |  3 ++
+ drivers/video/rockchip/rk_vop.c | 92 +++++++++++++++++++++++++--------
+ 2 files changed, 74 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/video/rockchip/Kconfig b/drivers/video/rockchip/Kconfig
+index 01804dcb1cc..32080bec81b 100644
+--- a/drivers/video/rockchip/Kconfig
++++ b/drivers/video/rockchip/Kconfig
+@@ -10,6 +10,9 @@
+ 
+ menuconfig VIDEO_ROCKCHIP
+ 	bool "Enable Rockchip Video Support"
++	select VIDEO_BRIDGE
++	select VIDEO_MIPI_DSI
++	select PANEL
+ 	depends on VIDEO
+ 	help
+ 	  Rockchip SoCs provide video output capabilities for High-Definition
+diff --git a/drivers/video/rockchip/rk_vop.c b/drivers/video/rockchip/rk_vop.c
+index c514e2a0e44..9d56009ace0 100644
+--- a/drivers/video/rockchip/rk_vop.c
++++ b/drivers/video/rockchip/rk_vop.c
+@@ -11,10 +11,13 @@
+ #include <dm/device_compat.h>
+ #include <edid.h>
+ #include <log.h>
++#include <mipi_dsi.h>
++#include <panel.h>
+ #include <regmap.h>
+ #include <reset.h>
+ #include <syscon.h>
+ #include <video.h>
++#include <video_bridge.h>
+ #include <asm/global_data.h>
+ #include <asm/gpio.h>
+ #include <asm/io.h>
+@@ -28,6 +31,7 @@
+ #include <linux/bitops.h>
+ #include <linux/err.h>
+ #include <power/regulator.h>
++
+ #include "rk_vop.h"
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+@@ -256,6 +260,9 @@ static int rk_display_init(struct udevice *dev, ulong fbbase, ofnode ep_node)
+ 	ofnode remote;
+ 	const char *compat;
+ 	struct reset_ctl dclk_rst;
++	struct udevice *bridge;
++	struct mipi_dsi_device *dsi;
++	struct udevice *panel;
+ 
+ 	debug("%s(%s, 0x%lx, %s)\n", __func__,
+ 	      dev_read_name(dev), fbbase, ofnode_get_name(ep_node));
+@@ -297,6 +304,10 @@ static int rk_display_init(struct udevice *dev, ulong fbbase, ofnode ep_node)
+ 			return -EINVAL;
+ 		}
+ 
++		uclass_find_device_by_ofnode(UCLASS_VIDEO_BRIDGE, remote, &bridge);
++		if (bridge)
++			break;
++
+ 		uclass_find_device_by_ofnode(UCLASS_DISPLAY, remote, &disp);
+ 		if (disp)
+ 			break;
+@@ -325,27 +336,57 @@ static int rk_display_init(struct udevice *dev, ulong fbbase, ofnode ep_node)
+ 	}
+ 	debug("vop_id=%d\n", vop_id);
+ 
+-	disp_uc_plat = dev_get_uclass_plat(disp);
+-	debug("Found device '%s', disp_uc_priv=%p\n", disp->name, disp_uc_plat);
+-	if (display_in_use(disp)) {
+-		debug("   - device in use\n");
+-		return -EBUSY;
+-	}
++	if (bridge) {
++		/* video bridge detected, probe it */
++		ret = device_probe(bridge);
++		if (ret) {
++			printf("%s: device '%s' bridge won't probe (ret=%d)\n",
++			      __func__, dev->name, ret);
++			return ret;
++		}
++		
++		/* Attach the DSI controller and the display to the bridge. */
++		ret = video_bridge_attach(bridge);
++		if (ret) {
++			printf("Failed to attach video bridge: %d\n", ret);
++			return ret;
++		}
+ 
+-	disp_uc_plat->source_id = remote_vop_id;
+-	disp_uc_plat->src_dev = dev;
++		/* Get the panel device (TODO: fetch it from the bridge somehow) */
++		ret = uclass_first_device_err(UCLASS_PANEL, &panel);
++		if (ret) {
++			printf("Panel device error: %d\n", ret);
++			return ret;
++		}
++		
++		ret = panel_get_display_timing(panel, &timing);
++		if (ret) {
++			debug("%s: Failed to read timings\n", __func__);
++			return ret;
++		}
++	} else {
++		disp_uc_plat = dev_get_uclass_plat(disp);
++		debug("Found device '%s', disp_uc_priv=%p\n", disp->name, disp_uc_plat);
++		if (display_in_use(disp)) {
++			debug("   - device in use\n");
++			return -EBUSY;
++		}
+ 
+-	ret = device_probe(disp);
+-	if (ret) {
+-		debug("%s: device '%s' display won't probe (ret=%d)\n",
+-		      __func__, dev->name, ret);
+-		return ret;
+-	}
++		disp_uc_plat->source_id = remote_vop_id;
++		disp_uc_plat->src_dev = dev;
+ 
+-	ret = display_read_timing(disp, &timing);
+-	if (ret) {
+-		debug("%s: Failed to read timings\n", __func__);
+-		return ret;
++		ret = device_probe(disp);
++		if (ret) {
++			debug("%s: device '%s' display won't probe (ret=%d)\n",
++			      __func__, dev->name, ret);
++			return ret;
++		}
++
++		ret = display_read_timing(disp, &timing);
++		if (ret) {
++			debug("%s: Failed to read timings\n", __func__);
++			return ret;
++		}
+ 	}
+ 
+ 	ret = clk_get_by_index(dev, 1, &clk);
+@@ -382,9 +423,18 @@ static int rk_display_init(struct udevice *dev, ulong fbbase, ofnode ep_node)
+ 
+ 	rkvop_enable(dev, regs, fbbase, 1 << l2bpp, &timing, &dclk_rst);
+ 
+-	ret = display_enable(disp, 1 << l2bpp, &timing);
+-	if (ret)
+-		return ret;
++	if (bridge) {
++		/* Attach the DSI controller and the display to the bridge. */
++		ret = video_bridge_set_backlight(bridge, 60);
++		if (ret) {
++			printf("Failed to start the video bridge: %d\n", ret);
++			return ret;
++		}
++	} else {
++		ret = display_enable(disp, 1 << l2bpp, &timing);
++		if (ret)
++			return ret;
++	}
+ 
+ 	uc_priv->xsize = timing.hactive.typ;
+ 	uc_priv->ysize = timing.vactive.typ;
+-- 
+2.39.2
+

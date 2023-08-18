@@ -1,0 +1,28 @@
+From 79fa0655bc8213875ddae819923083fafb039e99 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sun, 4 Jun 2023 01:44:02 +0200
+Subject: [PATCH 41/56] regulator: rk8xx: Fix USB voltage limit setting
+ function
+
+Value to be set into the register needs to be shifted to match
+the mask.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/power/regulator/rk8xx.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/power/regulator/rk8xx.c b/drivers/power/regulator/rk8xx.c
+index 0ee07ad299d..96a3f25a9f9 100644
+--- a/drivers/power/regulator/rk8xx.c
++++ b/drivers/power/regulator/rk8xx.c
+@@ -1154,5 +1154,5 @@ int rk818_spl_configure_usb_chrg_shutdown(struct udevice *pmic, int uvolt)
+ 			break;
+ 
+ 	return pmic_clrsetbits(pmic, REG_USB_CTRL, RK818_USB_CHG_SD_VSEL_MASK,
+-			       i);
++			       i << 4);
+ }
+-- 
+2.39.2
+

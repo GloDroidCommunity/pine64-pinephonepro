@@ -1,0 +1,37 @@
+From 3b5c622c22dc3306fd4abc663ca7561d77de9b23 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Mon, 22 May 2023 02:49:37 +0200
+Subject: [PATCH 13/56] video: dw_mipi_dsi: Fix hsync/vsync settings
+
+These must be read from timings->flags, like other DSI HOST drivers do.
+
+And they must not be inverted either. Low means low.
+
+Without this fix, panel drivers that set *SYNC_LOW produce corrupted
+output on screen (shifted horizobnntally and vertivally by back porch
+distance).
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/video/dw_mipi_dsi.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/video/dw_mipi_dsi.c b/drivers/video/dw_mipi_dsi.c
+index 92e388ac1e4..22fef7e8825 100644
+--- a/drivers/video/dw_mipi_dsi.c
++++ b/drivers/video/dw_mipi_dsi.c
+@@ -538,9 +538,9 @@ static void dw_mipi_dsi_dpi_config(struct dw_mipi_dsi *dsi,
+ 		break;
+ 	}
+ 
+-	if (device->mode_flags & DISPLAY_FLAGS_VSYNC_HIGH)
++	if (timings->flags & DISPLAY_FLAGS_VSYNC_LOW)
+ 		val |= VSYNC_ACTIVE_LOW;
+-	if (device->mode_flags & DISPLAY_FLAGS_HSYNC_HIGH)
++	if (timings->flags & DISPLAY_FLAGS_HSYNC_LOW)
+ 		val |= HSYNC_ACTIVE_LOW;
+ 
+ 	dsi_write(dsi, DSI_DPI_VCID, DPI_VCID(dsi->channel));
+-- 
+2.39.2
+

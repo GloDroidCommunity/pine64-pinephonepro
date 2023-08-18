@@ -1,0 +1,33 @@
+From 8a600217dbd623827a7645eaa14d69ce4bd47cbf Mon Sep 17 00:00:00 2001
+From: Roman Stratiienko <r.stratiienko@gmail.com>
+Date: Mon, 14 Aug 2023 23:55:07 +0300
+Subject: [PATCH 56/56] GLODROID: Fix build with clang
+
+Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
+---
+ board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+index d905bf22540..ab5b0afcee0 100644
+--- a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
++++ b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+@@ -432,6 +432,7 @@ void led_setup(void)
+ 		 * Fast charging state.
+ 		 */
+ 		case CC_OR_CV:
++		{
+                         int period = 2000;
+ 			if (cur < 0)
+ 				goto charge_off;
+@@ -457,6 +458,7 @@ void led_setup(void)
+ 				ppp_mdelay(&s, 1000);
+ 			}
+ 			break;
++		}
+ 
+ 		/*
+ 		 * Charge is done, nothing to wait for anymore. We only get
+-- 
+2.39.2
+

@@ -1,0 +1,30 @@
+From 604d38ed5f6f3bf3d18f36be80801855a89da956 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sun, 21 May 2023 20:35:13 +0200
+Subject: [PATCH 16/56] video: rockchip: dw_mipi_dsi: Return 0 from
+ dsi_phy_init on success
+
+ret is undefined if external phy is not used resulting in bogus
+error being returned in that scenario.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/video/rockchip/dw_mipi_dsi_rockchip.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+index b7d6b51703c..5e8db6bd2e6 100644
+--- a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
++++ b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+@@ -460,7 +460,7 @@ static int dsi_phy_init(void *priv_data)
+ 	dw_mipi_dsi_phy_write(dsi, HS_TX_DATA_LANE_EXIT_STATE_TIME_CONTROL,
+ 			      BIT(5) | ns2bc(dsi, 100));
+ 
+-	return ret;
++	return 0;
+ }
+ 
+ static void dsi_phy_post_set_mode(void *priv_data, unsigned long mode_flags)
+-- 
+2.39.2
+

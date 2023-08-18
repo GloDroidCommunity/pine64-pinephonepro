@@ -1,0 +1,48 @@
+From a714a7676b4fb00729f16687f4a427a6378011ff Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sun, 21 May 2023 05:20:25 +0200
+Subject: [PATCH 47/56] [HACK] pinephone-pro: Don't enable vcc5v0_usb regulator
+ in main u-boot
+
+Not needed for me.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ .../pinephone-pro-rk3399.c                    | 21 -------------------
+ 1 file changed, 21 deletions(-)
+
+diff --git a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+index caa5ef6f387..ac8fcb7ff0f 100644
+--- a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
++++ b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+@@ -22,27 +22,6 @@
+ #define PMUGRF_CON0_VOLSEL_SHIFT 8
+ #define PMUGRF_CON0_VOL_SHIFT 9
+ 
+-#ifndef CONFIG_SPL_BUILD
+-int board_early_init_f(void)
+-{
+-	struct udevice *regulator;
+-	int ret;
+-
+-	ret = regulator_get_by_platname("vcc5v0_usb", &regulator);
+-	if (ret) {
+-		pr_debug("%s vcc5v0_usb init fail! ret %d\n", __func__, ret);
+-		goto out;
+-	}
+-
+-	ret = regulator_set_enable(regulator, true);
+-	if (ret)
+-		pr_debug("%s vcc5v0-host-en-gpio set fail! ret %d\n", __func__, ret);
+-
+-out:
+-	return 0;
+-}
+-#endif
+-
+ #ifdef CONFIG_MISC_INIT_R
+ static void setup_iodomain(void)
+ {
+-- 
+2.39.2
+

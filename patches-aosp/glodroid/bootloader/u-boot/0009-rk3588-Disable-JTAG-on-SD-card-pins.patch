@@ -1,0 +1,36 @@
+From d1ee5462731e80b2559832562ef6115798889bc7 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Mon, 24 Jul 2023 02:12:14 +0200
+Subject: [PATCH 09/56] rk3588: Disable JTAG on SD card pins
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ board/rockchip/evb_rk3588/evb-rk3588.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/board/rockchip/evb_rk3588/evb-rk3588.c b/board/rockchip/evb_rk3588/evb-rk3588.c
+index caf94d8d29c..7f8c0e40d32 100644
+--- a/board/rockchip/evb_rk3588/evb-rk3588.c
++++ b/board/rockchip/evb_rk3588/evb-rk3588.c
+@@ -6,6 +6,8 @@
+ #include <fdtdec.h>
+ #include <fdt_support.h>
+ 
++#define RK3588_GRF_SOC_CON6 0xfd58c318
++
+ #ifdef CONFIG_OF_BOARD_SETUP
+ static int rk3588_add_reserved_memory_fdt_nodes(void *new_blob)
+ {
+@@ -20,6 +22,9 @@ static int rk3588_add_reserved_memory_fdt_nodes(void *new_blob)
+ 	unsigned long flags = FDTDEC_RESERVED_MEMORY_NO_MAP;
+ 	unsigned int ret;
+ 
++	/* disable JTAG to fix SD load speed/interference */
++	writel(1 << (14+16), RK3588_GRF_SOC_CON6);
++
+ 	/*
+ 	 * Inject the reserved-memory nodes into the DTS
+ 	 */
+-- 
+2.39.2
+
