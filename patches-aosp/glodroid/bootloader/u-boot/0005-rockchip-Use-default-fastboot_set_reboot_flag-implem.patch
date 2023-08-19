@@ -1,7 +1,7 @@
-From 426ae258b1dbf29538c0e314e1f3339c6d1bc848 Mon Sep 17 00:00:00 2001
+From f31848449897b9c9f352e557635289913a160e0d Mon Sep 17 00:00:00 2001
 From: Roman Stratiienko <r.stratiienko@gmail.com>
 Date: Fri, 30 Apr 2021 10:53:12 +0300
-Subject: [PATCH 4/6] rockchip: Use default fastboot_set_reboot_flag
+Subject: [PATCH 05/56] rockchip: Use default fastboot_set_reboot_flag
  implementation
 
 Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
@@ -10,10 +10,10 @@ Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
  1 file changed, 14 deletions(-)
 
 diff --git a/arch/arm/mach-rockchip/board.c b/arch/arm/mach-rockchip/board.c
-index f1f70c81d0..c13eb37c4e 100644
+index 45d9eae8700..e2fe42446de 100644
 --- a/arch/arm/mach-rockchip/board.c
 +++ b/arch/arm/mach-rockchip/board.c
-@@ -306,20 +306,6 @@ int board_usb_init(int index, enum usb_init_type init)
+@@ -313,20 +313,6 @@ int board_usb_init(int index, enum usb_init_type init)
  
  #endif /* CONFIG_USB_GADGET */
  
@@ -35,5 +35,5 @@ index f1f70c81d0..c13eb37c4e 100644
  __weak int misc_init_r(void)
  {
 -- 
-2.37.2
+2.39.2
 

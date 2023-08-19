@@ -1,0 +1,29 @@
+From 4014240cc1bb61a8f970951aecc957c76fbe9e8c Mon Sep 17 00:00:00 2001
+From: Jonas Karlman <jonas@kwiboo.se>
+Date: Thu, 8 Jun 2023 11:01:17 +0000
+Subject: [PATCH 39/56] rockchip: spl: Enable caches to speed up checksum
+ validation
+
+Signed-off-by: Jonas Karlman <jonas@kwiboo.se>
+---
+ arch/arm/mach-rockchip/spl.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm/mach-rockchip/spl.c b/arch/arm/mach-rockchip/spl.c
+index 30be6404252..29fe3353105 100644
+--- a/arch/arm/mach-rockchip/spl.c
++++ b/arch/arm/mach-rockchip/spl.c
+@@ -149,6 +149,10 @@ void board_init_f(ulong dummy)
+ 	}
+ 	gd->ram_top = gd->ram_base + get_effective_memsize();
+ 	gd->ram_top = board_get_usable_ram_top(gd->ram_size);
++	gd->relocaddr = gd->ram_top;
++
++	arch_reserve_mmu();
++	enable_caches();
+ #endif
+ 	preloader_console_init();
+ }
+-- 
+2.39.2
+

@@ -1,0 +1,43 @@
+From 91090a1ac5b24a2dddc4f98334d12418623a22c4 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sun, 21 May 2023 20:36:13 +0200
+Subject: [PATCH 28/56] video: rockchip: rk3399-vop: Don't enable hardcoded
+ regulator
+
+---
+ drivers/video/rockchip/rk3399_vop.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/video/rockchip/rk3399_vop.c b/drivers/video/rockchip/rk3399_vop.c
+index a34b491058f..019a0d10dfe 100644
+--- a/drivers/video/rockchip/rk3399_vop.c
++++ b/drivers/video/rockchip/rk3399_vop.c
+@@ -56,9 +56,9 @@ static void rk3399_set_pin_polarity(struct udevice *dev,
+  * Try some common regulators. We should really get these from the
+  * device tree somehow.
+  */
+-static const char * const rk3399_regulator_names[] = {
+-	"vcc33_lcd"
+-};
++//static const char * const rk3399_regulator_names[] = {
++//	"vcc33_lcd"
++//};
+ 
+ static int rk3399_vop_probe(struct udevice *dev)
+ {
+@@ -66,9 +66,9 @@ static int rk3399_vop_probe(struct udevice *dev)
+ 	if (!(gd->flags & GD_FLG_RELOC))
+ 		return 0;
+ 
+-	/* Probe regulators required for the RK3399 VOP */
+-	rk_vop_probe_regulators(dev, rk3399_regulator_names,
+-				ARRAY_SIZE(rk3399_regulator_names));
++//	/* Probe regulators required for the RK3399 VOP */
++//	rk_vop_probe_regulators(dev, rk3399_regulator_names,
++//				ARRAY_SIZE(rk3399_regulator_names));
+ 
+ 	return rk_vop_probe(dev);
+ }
+-- 
+2.39.2
+

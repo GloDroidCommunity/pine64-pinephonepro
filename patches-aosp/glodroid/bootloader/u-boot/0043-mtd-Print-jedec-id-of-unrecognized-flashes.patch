@@ -1,0 +1,28 @@
+From e1f7c8ac9e4e7391ea536826e6eabe53b05458aa Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Tue, 4 Jul 2023 07:55:54 +0200
+Subject: [PATCH 43/56] mtd: Print jedec id of unrecognized flashes
+
+Hell to debug otherwise.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/mtd/spi/spi-nor-tiny.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/mtd/spi/spi-nor-tiny.c b/drivers/mtd/spi/spi-nor-tiny.c
+index 7aa24e129f9..dc2d2aaa6b2 100644
+--- a/drivers/mtd/spi/spi-nor-tiny.c
++++ b/drivers/mtd/spi/spi-nor-tiny.c
+@@ -385,7 +385,7 @@ static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
+ 				return info;
+ 		}
+ 	}
+-	dev_dbg(nor->dev, "unrecognized JEDEC id bytes: %02x, %02x, %02x\n",
++	printf("unrecognized JEDEC id bytes: %02x, %02x, %02x\n",
+ 		id[0], id[1], id[2]);
+ 	return ERR_PTR(-EMEDIUMTYPE);
+ }
+-- 
+2.39.2
+

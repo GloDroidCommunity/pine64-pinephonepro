@@ -1,7 +1,7 @@
-From 683ce8416e5008bbc61b1e26209b870e14c1c244 Mon Sep 17 00:00:00 2001
+From 40db952b63f1324bc3f7f1941f6fa3357fd4e177 Mon Sep 17 00:00:00 2001
 From: Roman Stratiienko <r.stratiienko@gmail.com>
 Date: Wed, 5 Apr 2023 10:00:49 +0300
-Subject: [PATCH 4/6] ab_select: Add ab_test command
+Subject: [PATCH 04/56] ab_select: Add ab_test command
 
 We don't want to update BCB when for example, booting into the recovery
 or fastbootd.
@@ -18,7 +18,7 @@ Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
  3 files changed, 25 insertions(+), 7 deletions(-)
 
 diff --git a/boot/android_ab.c b/boot/android_ab.c
-index 2d7b392666..92886a7137 100644
+index 2d7b3926665..92886a71378 100644
 --- a/boot/android_ab.c
 +++ b/boot/android_ab.c
 @@ -181,7 +181,7 @@ static int ab_compare_slots(const struct slot_metadata *a,
@@ -40,7 +40,7 @@ index 2d7b392666..92886a7137 100644
  		ab_control_store(dev_desc, part_info, abc);
  	}
 diff --git a/cmd/ab_select.c b/cmd/ab_select.c
-index 3e46663d6e..26acf84d6d 100644
+index 3e46663d6ea..26acf84d6d7 100644
 --- a/cmd/ab_select.c
 +++ b/cmd/ab_select.c
 @@ -9,8 +9,7 @@
@@ -97,7 +97,7 @@ index 3e46663d6e..26acf84d6d 100644
 +	   "Same as ab_select, but does not update the BCB.\n"
 +);
 diff --git a/include/android_ab.h b/include/android_ab.h
-index 3eb61125c6..67a67b54c2 100644
+index 3eb61125c66..67a67b54c20 100644
 --- a/include/android_ab.h
 +++ b/include/android_ab.h
 @@ -28,8 +28,9 @@ struct disk_partition;
@@ -112,5 +112,5 @@ index 3eb61125c6..67a67b54c2 100644
  
  #endif /* __ANDROID_AB_H */
 -- 
-2.37.2
+2.39.2
 

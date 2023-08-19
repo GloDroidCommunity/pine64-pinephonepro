@@ -1,0 +1,1523 @@
+From 3d22ddb1287f551340c586207ce7987398184fc0 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sun, 21 May 2023 11:38:15 +0200
+Subject: [PATCH 51/56] pinephone-pro: Sync Pinephone Pro device tree with
+ Linux
+
+Update it so that it matches my orange-pi-6.3 branch.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ arch/arm/dts/rk3399-pinephone-pro-u-boot.dtsi |  206 ++-
+ arch/arm/dts/rk3399-pinephone-pro.dts         | 1113 +++++++++++++++++
+ 2 files changed, 1317 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/dts/rk3399-pinephone-pro-u-boot.dtsi b/arch/arm/dts/rk3399-pinephone-pro-u-boot.dtsi
+index 347243fe479..5186a252903 100644
+--- a/arch/arm/dts/rk3399-pinephone-pro-u-boot.dtsi
++++ b/arch/arm/dts/rk3399-pinephone-pro-u-boot.dtsi
+@@ -7,25 +7,227 @@
+ #include "rk3399-sdram-lpddr4-100.dtsi"
+ 
+ / {
++	aliases {
++		/delete-property/ mmc2;
++	};
++
+ 	chosen {
+ 		u-boot,spl-boot-order = "same-as-spl", &sdhci, &sdmmc;
+ 	};
+ 
+ 	config {
+ 		u-boot,spl-payload-offset = <0x60000>; /* @ 384KB */
++
++		/*
++		 * Hard-reset the board after soft reset.
++        	 */
++		sysreset-gpio = <&gpio1 RK_PA6 GPIO_ACTIVE_HIGH>;
++	};
++
++	adc-keys {
++		button-down {
++			press-threshold-microvolt = <300000>;
++			linux,code = <KEY_DOWN>;
++		};
++
++		button-up {
++			linux,code = <KEY_UP>;
++		};
++	};
++
++	gpio-keys {
++		key-power {
++			linux,code = <KEY_ENTER>;
++		};
++	};
++
++	leds {
++		bootph-pre-ram;
++
++		led-red {
++			bootph-pre-ram;
++		};
++
++		led-green {
++			bootph-pre-ram;
++		};
++
++		led-blue {
++			bootph-pre-ram;
++		};
+ 	};
+ };
+ 
++&mipi_dsi1 {
++	status = "disabled";
++};
++
+ &rng {
+ 	status = "okay";
+ };
+ 
++&sdio0 {
++	status = "disabled";
++};
++
+ &sdhci {
++	/delete-property/ bootph-all;
++	bootph-pre-ram;
+ 	max-frequency = <25000000>;
+-	bootph-all;
+ };
+ 
+ &sdmmc {
++	sd-uhs-sdr104;
++
++	/delete-property/ bootph-all;
++	bootph-pre-ram;
+ 	max-frequency = <20000000>;
+-	bootph-all;
++};
++
++&spi1 {
++	/delete-property/ bootph-all;
++	bootph-pre-ram;
++
++	flash@0 {
++		bootph-pre-ram;
++	};
++};
++
++&vopb {
++	/delete-property/ assigned-clocks;
++	/delete-property/ assigned-clock-rates;
++	/delete-property/ assigned-clock-parents;
++
++	/delete-property/ bootph-all;
++	bootph-pre-ram;
++
++	status = "disabled";
++};
++
++&vopl {
++	/delete-property/ assigned-clocks;
++	/delete-property/ assigned-clock-rates;
++	/delete-property/ assigned-clock-parents;
++
++	/delete-property/ bootph-all;
++	bootph-pre-ram;
++};
++
++&emmc_phy {
++	/delete-property/ bootph-all;
++	bootph-pre-ram;
++};
++
++&uart0 {
++	/delete-property/ bootph-all;
++};
++
++&pinctrl {
++	uart2c {
++		bootph-pre-ram;
++
++		uart2c-xfer {
++			bootph-pre-ram;
++		};
++	};
++
++	sdmmc {
++		bootph-pre-ram;
++	};
++
++	spi1 {
++		bootph-pre-ram;
++	};
++};
++
++&i2c3 {
++	/delete-node/ light-sensor@48;
++};
++
++&pcfg_pull_none {
++	bootph-pre-ram;
++};
++
++&pcfg_pull_up {
++	bootph-pre-ram;
++};
++
++&sdmmc_bus4 {
++	bootph-pre-ram;
++};
++
++&sdmmc_clk {
++	bootph-pre-ram;
++};
++
++&sdmmc_cmd {
++	bootph-pre-ram;
++};
++
++&sdmmc_cd {
++	bootph-pre-ram;
++};
++
++&vccio_sd {
++	bootph-pre-ram;
++};
++
++//&vcc3v3_sys {
++	//bootph-pre-ram;
++//};
++
++&i2c0_xfer {
++	bootph-pre-ram;
++};
++
++&i2c0 {
++	bootph-pre-ram;
++};
++
++&rk818 {
++	bootph-pre-ram;
++};
++
++&gpio0 {
++	bootph-pre-ram;
++};
++
++&gpio1 {
++	bootph-pre-ram;
++};
++
++&gpio4 {
++	bootph-pre-ram;
++};
++
++&pmic_int_l {
++	bootph-pre-ram;
++};
++
++&red_led_pin {
++	bootph-pre-ram;
++};
++
++&green_led_pin {
++	bootph-pre-ram;
++};
++
++&blue_led_pin {
++	bootph-pre-ram;
++};
++
++&spi1_clk {
++	bootph-pre-ram;
++};
++
++&spi1_cs0 {
++	bootph-pre-ram;
++};
++
++&spi1_rx {
++	bootph-pre-ram;
++};
++
++&spi1_tx {
++	bootph-pre-ram;
+ };
+diff --git a/arch/arm/dts/rk3399-pinephone-pro.dts b/arch/arm/dts/rk3399-pinephone-pro.dts
+index 04403a76238..54f593a81b2 100644
+--- a/arch/arm/dts/rk3399-pinephone-pro.dts
++++ b/arch/arm/dts/rk3399-pinephone-pro.dts
+@@ -10,7 +10,10 @@
+  */
+ 
+ /dts-v1/;
++#include <dt-bindings/input/gpio-keys.h>
+ #include <dt-bindings/input/linux-event-codes.h>
++#include <dt-bindings/leds/common.h>
++#include <dt-bindings/usb/pd.h>
+ #include "rk3399.dtsi"
+ #include "rk3399-opp.dtsi"
+ 
+@@ -29,6 +32,216 @@
+ 		stdout-path = "serial2:115200n8";
+ 	};
+ 
++	adc-keys {
++		compatible = "adc-keys";
++		io-channels = <&saradc 1>;
++		io-channel-names = "buttons";
++		keyup-threshold-microvolt = <1600000>;
++		poll-interval = <100>;
++
++		button-up {
++			label = "Volume Up";
++			linux,code = <KEY_VOLUMEUP>;
++			press-threshold-microvolt = <100000>;
++		};
++
++		button-down {
++			label = "Volume Down";
++			linux,code = <KEY_VOLUMEDOWN>;
++			press-threshold-microvolt = <400000>;
++		};
++	};
++
++	bat: battery {
++                compatible = "simple-battery";
++                voltage-min-design-microvolt = <3400000>;
++                voltage-max-design-microvolt = <4350000>;
++                energy-full-design-microwatt-hours = <11400000>;
++                charge-full-design-microamp-hours = <3000000>;
++                precharge-current-microamp = <120000>;
++                charge-term-current-microamp = <150000>;
++                constant-charge-current-max-microamp = <1500000>;
++                constant-charge-voltage-max-microvolt = <4350000>;
++                factory-internal-resistance-micro-ohms = <150000>;
++                resistance-temp-table = <20 150>;
++                ocv-capacity-celsius = <20>;
++                ocv-capacity-table-0 =
++			<4308000 100>,
++			<4217000 95>,
++			<4161000 90>,
++			<4110000 85>,
++			<4066000 80>,
++			<4007000 75>,
++			<3974000 70>,
++			<3937000 65>,
++			<3896000 60>,
++			<3853000 55>,
++			<3827000 50>,
++			<3807000 45>,
++			<3793000 40>,
++			<3780000 35>,
++			<3768000 30>,
++			<3756000 25>,
++			<3740000 20>,
++			<3716000 15>,
++			<3689000 10>,
++			<3675000 5>,
++			<3400000 0>;
++        };
++
++        ppkb_battery: keyboard-battery {
++                compatible = "simple-battery";
++                voltage-min-design-microvolt = <3000000>;
++                voltage-max-design-microvolt = <4200000>;
++                energy-full-design-microwatt-hours = <21000000>;
++                charge-full-design-microamp-hours = <6000000>;
++                precharge-current-microamp = <100000>;
++                charge-term-current-microamp = <50000>;
++                constant-charge-current-max-microamp = <2000000>;
++                constant-charge-voltage-max-microvolt = <4200000>;
++                factory-internal-resistance-micro-ohms = <120000>;
++                ocv-capacity-celsius = <20>;
++                ocv-capacity-table-0 =
++			<4147328 100>,
++			<4132636 99>,
++			<4121720 98>,
++			<4110905 97>,
++			<4102063 96>,
++			<4092428 95>,
++			<4082371 94>,
++			<4074137 93>,
++			<4064172 92>,
++			<4056387 91>,
++			<4047198 90>,
++			<4038599 89>,
++			<4030933 88>,
++			<4021831 87>,
++			<4012613 86>,
++			<4003863 85>,
++			<3995132 84>,
++			<3986108 83>,
++			<3977434 82>,
++			<3967977 81>,
++			<3960286 80>,
++			<3951737 79>,
++			<3943518 78>,
++			<3935723 77>,
++			<3928692 76>,
++			<3920093 75>,
++			<3912676 74>,
++			<3905481 73>,
++			<3899881 72>,
++			<3892341 71>,
++			<3887140 70>,
++			<3880005 69>,
++			<3876060 68>,
++			<3869195 67>,
++			<3863234 66>,
++			<3857808 65>,
++			<3851464 64>,
++			<3846976 63>,
++			<3840724 62>,
++			<3835254 61>,
++			<3830946 60>,
++			<3826564 59>,
++			<3821275 58>,
++			<3817413 57>,
++			<3811941 56>,
++			<3808947 55>,
++			<3804959 54>,
++			<3800958 53>,
++			<3797447 52>,
++			<3794303 51>,
++			<3790341 50>,
++			<3787022 49>,
++			<3783436 48>,
++			<3779936 47>,
++			<3776176 46>,
++			<3772160 45>,
++			<3769348 44>,
++			<3766705 43>,
++			<3762481 42>,
++			<3760894 41>,
++			<3758396 40>,
++			<3755803 39>,
++			<3753543 38>,
++			<3749691 37>,
++			<3747026 36>,
++			<3743937 35>,
++			<3741872 34>,
++			<3738529 33>,
++			<3737528 32>,
++			<3734059 31>,
++			<3731586 30>,
++			<3728576 29>,
++			<3725939 28>,
++			<3721208 27>,
++			<3718239 26>,
++			<3713032 25>,
++			<3709785 24>,
++			<3704045 23>,
++			<3701203 22>,
++			<3695965 21>,
++			<3691074 20>,
++			<3684562 19>,
++			<3679140 18>,
++			<3670993 17>,
++			<3664243 16>,
++			<3655383 15>,
++			<3647666 14>,
++			<3642747 13>,
++			<3637775 12>,
++			<3632593 11>,
++			<3627120 10>,
++			<3620923 9>,
++			<3611465 8>,
++			<3597536 7>,
++			<3577366 6>,
++			<3545253 5>,
++			<3497377 4>,
++			<3430377 3>,
++			<3337780 2>,
++			<3183953 1>,
++			<3064061 0>;
++        };
++
++	backlight: backlight {
++		compatible = "pwm-backlight";
++		pwms = <&pwm0 0 50000 0>;
++		brightness-levels =
++			<0 250 360 470 580 690 810 949 1110 1294 1502
++			1737 1998 2289 2610 2964 3351 3774 4233 4731
++			5268 5847 6467 7133 7845 8604 9412 10271 11182
++			12146 13164 14239 15374 16568 17822 19140 20521
++			21969 23483 25068 26722 28447 30247 32121 34071
++			36099 38210 40400 42669 45026 47468 50000>;
++		default-brightness-level = <17>;
++	};
++
++	leds {
++		compatible = "gpio-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&red_led_pin &green_led_pin &blue_led_pin>;
++
++		led-red {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_INDICATOR;
++			gpios = <&gpio4 RK_PD2 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-green {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_INDICATOR;
++			gpios = <&gpio4 RK_PD5 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-blue {
++			color = <LED_COLOR_ID_BLUE>;
++			function = LED_FUNCTION_INDICATOR;
++			gpios = <&gpio4 RK_PD6 GPIO_ACTIVE_HIGH>;
++		};
++	};
++
+ 	gpio-keys {
+ 		compatible = "gpio-keys";
+ 		pinctrl-names = "default";
+@@ -43,6 +256,76 @@
+ 		};
+ 	};
+ 
++	// in1  - digital mic daughhterboard
++	// in2  - headset mic
++	// in3  - modem output  (muxed with mono)
++	// spol - earphone
++	// hpo  - heaphones
++	// lout - modem input
++	// spaker - amp enabled by SPK_CTL_H
++	//
++	// mclk - GPIO4_A0/I2S_CLK
++
++	rt5640-sound {
++		compatible = "simple-audio-card";
++		pinctrl-names = "default";
++		pinctrl-0 = <&hp_det>;
++		simple-audio-card,name = "PinePhonePro";
++		simple-audio-card,aux-devs = <&speaker_amp>;
++		simple-audio-card,format = "i2s";
++		simple-audio-card,mclk-fs = <256>;
++		simple-audio-card,hp-det-gpio = <&gpio4 RK_PD4 GPIO_ACTIVE_LOW>;
++		simple-audio-card,pin-switches = "Internal Speaker";
++
++		simple-audio-card,widgets =
++			"Microphone", "Headset Microphone",
++			"Microphone", "Internal Microphone",
++			"Headphone", "Headphones",
++			"Speaker", "Internal Earpiece",
++			"Speaker", "Internal Speaker",
++			"Line", "Line In Modem",
++			"Line", "Line Out Modem";
++
++		simple-audio-card,routing =
++			"Headphones", "HPOL",
++			"Headphones", "HPOR",
++			"Internal Earpiece", "SPOLP",
++			"Internal Earpiece", "SPOLN",
++			"Internal Speaker", "Speaker Amp OUTL",
++			"Internal Speaker", "Speaker Amp OUTR",
++			"Speaker Amp INL", "HPOL",
++			"Speaker Amp INR", "HPOR",
++			"DMIC1", "Internal Microphone",
++			"Headset Microphone", "MICBIAS1",
++			"IN2P", "Headset Microphone",
++			"Line Out Modem", "LOUTL",
++			"Line Out Modem", "LOUTR",
++			"IN3P", "Line In Modem",
++			"IN3N", "Line In Modem";
++
++		simple-audio-card,cpu {
++			sound-dai = <&i2s0>;
++		};
++
++		simple-audio-card,codec {
++			sound-dai = <&rt5640>;
++		};
++	};
++
++	speaker_amp: audio-amplifier {
++		compatible = "simple-audio-amplifier";
++		pinctrl-names = "default";
++		pinctrl-0 = <&spk_en>;
++		enable-gpios = <&gpio0 RK_PB3 GPIO_ACTIVE_HIGH>;
++		sound-name-prefix = "Speaker Amp";
++	};
++
++	vibrator {
++		compatible = "gpio-vibrator";
++		enable-gpios = <&gpio3 RK_PB1 GPIO_ACTIVE_HIGH>;
++		vcc-supply = <&vcc3v3_sys>;
++	};
++
+ 	vcc_sys: vcc-sys-regulator {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "vcc_sys";
+@@ -50,6 +333,50 @@
+ 		regulator-boot-on;
+ 	};
+ 
++	vcc5v0_sys: vcc5v0-host-regulator {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc5v0_sys";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		regulator-always-on;
++		regulator-boot-on;
++		vin-supply = <&boost_otg>;
++
++		regulator-state-mem {
++			regulator-on-in-suspend;
++		};
++	};
++
++	/*
++	 * This is not a regulator. GPIO0_A6 is used to force enable VCC_SYS <->
++	 * VBAT+ Q7 switch that helps boost the RK818's power path's current carrying
++	 * capacity when operating the phone from the battery in case VBUS_TYPEC
++	 * has 5V provided by the phone itself and not by the external power
++	 * supply. (this happens in USB host mode)
++	 *
++	 * GPIO0_A6 low: Q7 is enabled if there's 0V on VBUS_TYPEC (phone is not
++	 *               powered from external power supply)
++	 * GPIO0_A6 high: Q7 is enabled no matter what
++	 *
++	 * GPIO0_A6 must be high when the phone is providing VBUS_TYPEC power.
++	 * This keeps the power path boost enabled for all cases when the phone
++	 * runs from the battery.
++	 *
++	 * In other words, GPIO0_A6 is used to override the automatic disabling
++	 * of Q7 when VBUS_TYPEC has 5V in USB host mode.
++	 */
++	vcc5v0_typec: vcc5v0-typec-regulator {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		gpio = <&gpio0 RK_PA6 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&vcc5v0_typec_en>;
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		regulator-name = "vcc5v0_typec";
++		vin-supply = <&boost_otg>;
++	};
++
+ 	vcc3v3_sys: vcc3v3-sys-regulator {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "vcc3v3_sys";
+@@ -70,6 +397,30 @@
+ 		regulator-boot-on;
+ 	};
+ 
++	vcc_4g_5v: vcc-4g-5v {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		gpio = <&gpio1 RK_PC7 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&vcc_4g_5v_en>;
++		regulator-name = "vcc_4g_5v";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		vin-supply = <&vcc5v0_sys>;
++	};
++
++	vcc_4g: vcc-4g {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		gpio = <&gpio4 RK_PC7 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&vcc_4g_en>;
++		regulator-name = "vcc_4g";
++		regulator-min-microvolt = <3800000>;
++		regulator-max-microvolt = <3800000>;
++		vin-supply = <&vcc_sys>;
++	};
++
+ 	vcc1v8_codec: vcc1v8-codec-regulator {
+ 		compatible = "regulator-fixed";
+ 		enable-active-high;
+@@ -77,6 +428,8 @@
+ 		pinctrl-names = "default";
+ 		pinctrl-0 = <&vcc1v8_codec_en>;
+ 		regulator-name = "vcc1v8_codec";
++		regulator-always-on;
++		regulator-boot-on;
+ 		regulator-min-microvolt = <1800000>;
+ 		regulator-max-microvolt = <1800000>;
+ 		vin-supply = <&vcc3v3_sys>;
+@@ -102,6 +455,71 @@
+ 		/* WL_REG_ON on module */
+ 		reset-gpios = <&gpio0 RK_PB2 GPIO_ACTIVE_LOW>;
+ 	};
++
++	/* MIPI DSI panel 1.8v supply */
++	vcc1v8_lcd: vcc1v8-lcd {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		regulator-name = "vcc1v8_lcd";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++		vin-supply = <&vcc3v3_sys>;
++		gpio = <&gpio3 RK_PA5 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&display_pwren1>;
++	};
++
++	/* MIPI DSI panel 2.8v supply */
++	vcc2v8_lcd: vcc2v8-lcd {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		regulator-name = "vcc2v8_lcd";
++		regulator-min-microvolt = <2800000>;
++		regulator-max-microvolt = <2800000>;
++		vin-supply = <&vcc3v3_sys>;
++		gpio = <&gpio3 RK_PA1 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&display_pwren>;
++	};
++
++	typec_extcon_bridge: typec-extcon {
++		compatible = "linux,typec-extcon-bridge";
++		usb-role-switch;
++		orientation-switch;
++		mode-switch;
++		svid = /bits/ 16 <0xff01>;
++	};
++
++	sgm3140: led-controller {
++		compatible = "sgmicro,sgm3140";
++		vin-supply = <&vcc3v3_sys>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&flash_pins>;
++		enable-gpios = <&gpio4 RK_PC6 GPIO_ACTIVE_HIGH>;
++		flash-gpios = <&gpio1 RK_PA3 GPIO_ACTIVE_HIGH>;
++
++		sgm3140_flash: led {
++			function = LED_FUNCTION_FLASH;
++			color = <LED_COLOR_ID_WHITE>;
++			flash-max-timeout-us = <250000>;
++		};
++	};
++
++	keyboard-power {
++		compatible = "megi,pinephone-keyboard-power-manager";
++		phone-battery = "rk818-battery";
++		phone-usb = "rk818-usb";
++		kb-battery = "ip5xxx-battery";
++		kb-boost = "ip5xxx-boost";
++		kb-usb = "ip5xxx-usb";
++	};
++};
++
++&cpu_alert0 {
++	temperature = <65000>;
++};
++&cpu_alert1 {
++	temperature = <68000>;
+ };
+ 
+ &cpu_l0 {
+@@ -128,10 +546,21 @@
+ 	cpu-supply = <&vdd_cpu_b>;
+ };
+ 
++&cdn_dp {
++	status = "okay";
++	extcon = <&typec_extcon_bridge>;
++	phys = <&tcphy0_dp>;
++};
++
+ &emmc_phy {
+ 	status = "okay";
+ };
+ 
++&gpu {
++	mali-supply = <&vdd_gpu>;
++	status = "okay";
++};
++
+ &i2c0 {
+ 	clock-frequency = <400000>;
+ 	i2c-scl-rising-time-ns = <168>;
+@@ -158,6 +587,7 @@
+ 		vcc7-supply = <&vcc3v3_sys>;
+ 		vcc8-supply = <&vcc_sys>;
+ 		vcc9-supply = <&vcc3v3_sys>;
++		usb-supply = <&vcc5v0_typec>;
+ 
+ 		regulators {
+ 			vdd_cpu_l: DCDC_REG1 {
+@@ -206,20 +636,33 @@
+ 
+ 			vcca3v0_codec: LDO_REG1 {
+ 				regulator-name = "vcca3v0_codec";
++				regulator-always-on;
++				regulator-boot-on;
+ 				regulator-min-microvolt = <3000000>;
+ 				regulator-max-microvolt = <3000000>;
++				regulator-state-mem {
++					regulator-on-in-suspend;
++				};
+ 			};
+ 
+ 			vcc3v0_touch: LDO_REG2 {
+ 				regulator-name = "vcc3v0_touch";
+ 				regulator-min-microvolt = <3000000>;
+ 				regulator-max-microvolt = <3000000>;
++				regulator-state-mem {
++					regulator-off-in-suspend;
++				};
+ 			};
+ 
+ 			vcca1v8_codec: LDO_REG3 {
+ 				regulator-name = "vcca1v8_codec";
++				regulator-always-on;
++				regulator-boot-on;
+ 				regulator-min-microvolt = <1800000>;
+ 				regulator-max-microvolt = <1800000>;
++				regulator-state-mem {
++					regulator-on-in-suspend;
++				};
+ 			};
+ 
+ 			rk818_pwr_on: LDO_REG4 {
+@@ -286,6 +729,56 @@
+ 					regulator-on-in-suspend;
+ 				};
+ 			};
++
++			boost_otg: DCDC_BOOST {
++				regulator-name = "boost_otg";
++				regulator-always-on;
++				regulator-boot-on;
++				regulator-min-microvolt = <5000000>;
++				regulator-max-microvolt = <5000000>;
++				regulator-state-mem {
++					regulator-on-in-suspend;
++				};
++			};
++
++			otg_switch: OTG_SWITCH {
++				regulator-name = "otg_switch";
++			};
++		};
++
++		/*
++		 * XXX: Backported BSP stuff, drop this. Use standard
++		 * "monitored-battery" property.
++		 */
++		battery {
++			compatible = "rockchip,rk818-battery";
++			ocv_table = <3400 3675 3689 3716 3740 3756 3768 3780
++				3793 3807 3827 3853 3896 3937 3974 4007 4066
++				4110 4161 4217 4308>;
++			design_capacity = <2916>;
++			design_qmax = <2708>;
++			bat_res = <150>;
++			max_input_current = <3000>;
++			max_chrg_current = <2000>;
++			max_chrg_voltage = <4350>;
++			sleep_enter_current = <300>;
++			sleep_exit_current = <300>;
++			power_off_thresd = <3400>;
++			zero_algorithm_vol = <3950>;
++			fb_temperature = <105>;
++			sample_res = <10>;
++			max_soc_offset = <60>;
++			energy_mode = <0>;
++			monitor_sec = <5>;
++			virtual_power = <0>;
++			power_dc2otg = <0>;
++			otg5v_suspend_enable = <1>;
++		};
++
++		charger {
++			compatible = "rockchip,rk818-charger";
++			power-supplies = <&fusb0>;
++			monitored-battery = <&bat>;
+ 		};
+ 	};
+ 
+@@ -347,6 +840,293 @@
+ 	};
+ };
+ 
++/*
++ * Cameras:
++ *
++ * cif clk out = gpio2 B3 / CIF_CLKOUTA_u
++ *
++ * both on i2c1  GPIO4_A1 (SDA) / GPIO4_A2 (SCL)
++ *
++ * both share power:
++ * VCC1V8_DVP         - LDO7  - supplied by VCC7 (VCC3V3_SYS)
++ * DVDD_DVP     1.5V  - autoenabled by VCC2V8_DVP   depends on VCC1V8_S3 (U118 supplies 1.2V, though, not 1.5V)
++ * VCC2V8_DVP   af    - autoenabled by VCC1V8_DVP   depends on VCC3V3_SYS
++ * AVDD2V8_DVP        - autoenabled by VCC1V8_DVP   depends on VCC3V3_SYS
++ *
++ * isp1 = imx258
++ *   reset = GPIO1_A0
++ *   powerdown = GPIO2_B4
++ *
++ * isp0 = OV8858
++ *   powerdown = GPIO2_D4
++ *   reset = GPIO1_A4
++ */
++&i2c1 {
++	status = "okay";
++
++	clock-frequency = <400000>;
++	i2c-scl-rising-time-ns = <300>;
++	i2c-scl-falling-time-ns = <15>;
++
++	pinctrl-0 = <&i2c1_xfer &cif_clkouta>;
++
++	assigned-clocks = <&cru SCLK_CIF_OUT &cru SCLK_CIF_OUT_SRC>;
++	assigned-clock-parents = <&cru SCLK_CIF_OUT_SRC &cru PLL_GPLL>;
++	assigned-clock-rates = <19200000 0>;
++
++	wcam: camera@1a {
++		compatible = "sony,imx258";
++		reg = <0x1a>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&wcam_rst &wcam_pdn>;
++
++		clocks = <&cru SCLK_CIF_OUT>;
++		clock-names = "xvclk";
++
++		vif-supply = <&vcc1v8_dvp>;
++		i2c-supply = <&vcca1v8_codec>;
++		/*XXX: also depends on vcca1v8_codec for I2C bus power (currently always on) */
++
++		reset-gpios = <&gpio1 RK_PA0 GPIO_ACTIVE_LOW>;
++		powerdown-gpios = <&gpio2 RK_PD4 GPIO_ACTIVE_HIGH>;
++
++		rotation = <180>;
++
++		lens-focus = <&wcam_lens>;
++		flash-leds = <&sgm3140_flash>;
++
++		port {
++			wcam_out: endpoint {
++				remote-endpoint = <&mipi_in_wcam>;
++				data-lanes = <1 2 3 4>;
++			};
++		};
++	};
++
++	wcam_lens: camera-lens@c {
++		compatible = "dongwoon,dw9714";
++		reg = <0x0c>;
++		vcc-supply = <&vcc1v8_dvp>;
++	};
++
++	ucam: camera@36 {
++		compatible = "ovti,ov8858";
++		reg = <0x36>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&ucam_pdn &ucam_rst>;
++
++		clocks = <&cru SCLK_CIF_OUT>;
++		clock-names = "xvclk";
++
++		dovdd-supply = <&vcc1v8_dvp>;
++		/*XXX: also depends on vcca1v8_codec for I2C bus power */
++
++		reset-gpios = <&gpio1 RK_PA4 GPIO_ACTIVE_LOW>;
++		powerdown-gpios = <&gpio2 RK_PB4 GPIO_ACTIVE_LOW>;
++
++		/* we're using forward ported BSP driver, thus: */
++		rockchip,camera-module-index = <0x00>;
++		rockchip,camera-module-facing = "front";
++		rockchip,camera-module-name = "CameraKing";
++		rockchip,camera-module-lens-name = "Largan-9569A2";
++
++		rotation = <180>;
++
++		port {
++			ucam_out: endpoint {
++				remote-endpoint = <&mipi_in_ucam>;
++				data-lanes = <1 2 3 4>;
++			};
++		};
++	};
++
++	// XXX: modem codec supplies:
++	// - vcc1v8_codec
++	// - vcca3v0_codec
++
++	// supplies: (always on currently)
++	// - vcca3v0_codec
++	// - vcca1v8_codec
++	// - vcc5v0_sys - spk_vcc
++	rt5640: rt5640@1c {
++		compatible = "realtek,rt5640";
++		reg = <0x1c>;
++		clocks = <&cru SCLK_I2S_8CH_OUT>;
++		clock-names = "mclk";
++		assigned-clocks = <&cru SCLK_I2S0_8CH>;
++		assigned-clock-rates = <11289599>;
++		realtek,dmic1-data-pin = <1>;
++		realtek,in3-differential;
++		realtek,lout-differential;
++		#sound-dai-cells = <0>;
++	};
++};
++
++&i2c3 {
++	i2c-scl-rising-time-ns = <450>;
++	i2c-scl-falling-time-ns = <15>;
++	status = "okay";
++
++	touchscreen@14 {
++		compatible = "goodix,gt917s";
++		reg = <0x14>;
++		interrupt-parent = <&gpio3>;
++		interrupts = <RK_PB5 IRQ_TYPE_EDGE_RISING>;
++		use-dt-irq-flags;
++		irq-gpios = <&gpio3 RK_PB5 GPIO_ACTIVE_HIGH>;
++		reset-gpios = <&gpio3 RK_PB4 GPIO_ACTIVE_HIGH>;
++		AVDD28-supply = <&vcc3v0_touch>;
++		VDDIO-supply = <&vcc3v0_touch>;
++		touchscreen-size-x = <720>;
++		touchscreen-size-y = <1440>;
++		poweroff-in-suspend;
++	};
++
++	light-sensor@48 {
++		compatible = "sensortek,stk3311";
++		reg = <0x48>;
++		interrupt-parent = <&gpio4>;
++		interrupts = <RK_PD3 IRQ_TYPE_EDGE_FALLING>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&stk3311_int>;
++		vdd-supply = <&vcc_3v0>;
++		leda-supply = <&vcc_3v0>;
++		i2c-supply = <&vcc3v0_touch>;
++	};
++};
++
++&i2c4 {
++	i2c-scl-rising-time-ns = <600>;
++	i2c-scl-falling-time-ns = <20>;
++	status = "okay";
++
++	fusb0: typec-portc@22 {
++		compatible = "fcs,fusb302";
++		reg = <0x22>;
++		interrupt-parent = <&gpio1>;
++		interrupts = <RK_PA2 IRQ_TYPE_LEVEL_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&fusb0_int>;
++		extcon = <&typec_extcon_bridge>;
++		usb-role-switch = <&typec_extcon_bridge>;
++		vbus-supply = <&otg_switch>;
++
++		connector {
++			compatible = "usb-c-connector";
++			data-role = "dual";
++			label = "USB-C";
++			op-sink-microwatt = <2500000>;
++			power-role = "dual";
++			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM | PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP)>;
++			source-pdos = <PDO_FIXED(5000, 900, PDO_FIXED_USB_COMM | PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP)>;
++			try-power-role = "sink";
++			mode-switch = <&typec_extcon_bridge>;
++			orientation-switch = <&typec_extcon_bridge>;
++
++			altmodes {
++				dp {
++					svid = <0xff01>;
++					vdo = <0x0c46>;
++				};
++			};
++
++			ports {
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				port@0 {
++					reg = <0>;
++
++					usbc_hs: endpoint {
++						remote-endpoint =
++							<&u2phy0_typec_hs>;
++					};
++				};
++
++				port@1 {
++					reg = <1>;
++
++					usbc_ss: endpoint {
++						remote-endpoint =
++							<&tcphy0_typec_ss>;
++					};
++				};
++
++				port@2 {
++					reg = <2>;
++
++					usbc_dp: endpoint {
++						remote-endpoint =
++							<&tcphy0_typec_dp>;
++					};
++				};
++			};
++		};
++	};
++
++	accelerometer@68 {
++		compatible = "invensense,mpu6500";
++		reg = <0x68>;
++		interrupt-parent = <&gpio1>;
++		interrupts = <RK_PC6 IRQ_TYPE_LEVEL_LOW>;
++		vdd-supply = <&vcc_1v8>;
++		vddio-supply = <&vcc_1v8>;
++
++		mount-matrix =
++			"1", "0", "0",
++			"0", "-1", "0",
++			"0", "0", "1";
++	};
++
++	af8133j: compass@1c {
++		compatible = "voltafield,af8133j";
++		reg = <0x1c>;
++		reset-gpios = <&gpio1 RK_PA1 GPIO_ACTIVE_LOW>;
++		avdd-supply = <&vcc_3v0>;
++		dvdd-supply = <&vcc_1v8>;
++		
++		mount-matrix =
++			"0", "1", "0",
++			"-1", "0", "0",
++			"0", "0", "1";
++	};
++};
++
++/* This bus is exposed on POGO pins */
++&i2c5 {
++	i2c-scl-rising-time-ns = <450>;
++	i2c-scl-falling-time-ns = <15>;
++	pinctrl-0 = <&i2c5_xfer &pogo_int_pin>;
++	status = "okay";
++
++	ppkb: keyboard@15 {
++		compatible = "pine64,pinephone-keyboard";
++		reg = <0x15>;
++		interrupt-parent = <&gpio3>;
++		interrupts = <RK_PA0 IRQ_TYPE_EDGE_FALLING>;
++		vbat-supply = <&vcc5v0_sys>;
++		wakeup-source;
++
++		i2c {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			charger@75 {
++				compatible = "injoinic,ip5209";
++				reg = <0x75>;
++				monitored-battery = <&ppkb_battery>;
++			};
++		};
++	};
++};
++
++&i2s0 {
++	rockchip,playback-channels = <2>;
++	rockchip,capture-channels = <2>;
++	pinctrl-0 = <&i2s0_2ch_bus>;
++	status = "okay";
++};
++
+ &io_domains {
+ 	bt656-supply = <&vcc1v8_dvp>;
+ 	audio-supply = <&vcca1v8_codec>;
+@@ -355,6 +1135,113 @@
+ 	status = "okay";
+ };
+ 
++&isp1 {
++	status = "okay";
++
++	ports {
++		port@0 {
++			mipi_in_wcam: endpoint@0 {
++				reg = <0>;
++				remote-endpoint = <&wcam_out>;
++				data-lanes = <1 2 3 4>;
++			};
++		};
++	};
++};
++
++&mipi_dphy_rx0 {
++	status = "okay";
++};
++
++&isp0 {
++	status = "okay";
++
++	ports {
++		port@0 {
++			mipi_in_ucam: endpoint@0 {
++				reg = <0>;
++				remote-endpoint = <&ucam_out>;
++				data-lanes = <1 2 3 4>;
++			};
++		};
++	};
++};
++
++&isp0_mmu {
++	status = "okay";
++};
++
++&isp1_mmu {
++	status = "okay";
++};
++
++&mipi_dsi1 {
++	status = "okay";
++};
++
++&mipi_dsi {
++	status = "okay";
++	clock-master;
++
++	ports {
++		mipi_out: port@1 {
++			#address-cells = <0>;
++			#size-cells = <0>;
++			reg = <1>;
++
++			mipi_out_panel: endpoint {
++				remote-endpoint = <&mipi_in_panel>;
++			};
++		};
++	};
++
++	panel@0 {
++		compatible = "hannstar,hsd060bhw4";
++		reg = <0>;
++		backlight = <&backlight>;
++		reset-gpios = <&gpio4 RK_PD1 GPIO_ACTIVE_LOW>;
++		vcc-supply = <&vcc2v8_lcd>; // 2v8
++		iovcc-supply = <&vcc1v8_lcd>; // 1v8
++		pinctrl-names = "default";
++		pinctrl-0 = <&display_rst_l>;
++
++		port {
++			mipi_in_panel: endpoint {
++				remote-endpoint = <&mipi_out_panel>;
++			};
++		};
++	};
++};
++
++&uart3 {
++	status = "okay";
++
++	modem {
++		compatible = "quectel,eg25";
++		char-device-name = "modem-power";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&modem_control_pins>;
++
++		power-supply = <&vcc_4g>;
++		vbus-supply = <&vcc_4g_5v>;
++
++		enable-gpios = <&gpio0 RK_PB0 GPIO_ACTIVE_HIGH>; // W_DISABLE#
++		reset-gpios = <&gpio3 RK_PB0 GPIO_ACTIVE_HIGH>;
++		status-gpios = <&gpio3 RK_PA6 GPIO_ACTIVE_HIGH>;
++		pwrkey-gpios = <&gpio0 RK_PB5 GPIO_ACTIVE_HIGH>;
++
++		host-ready-gpios = <&gpio0 RK_PB4 GPIO_ACTIVE_HIGH>; // apready
++		wakeup-gpios = <&gpio0 RK_PA1 GPIO_ACTIVE_HIGH>; // ri
++
++		dtr-gpios = <&gpio0 RK_PA3 GPIO_ACTIVE_HIGH>;
++		cts-gpios = <&gpio3 RK_PC0 GPIO_ACTIVE_HIGH>;
++		rts-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_HIGH>;
++
++		quectel,qdai = "3,0,0,4,0,0,1,1";
++	};
++};
++
+ &pmu_io_domains {
+ 	pmu1830-supply = <&vcc_1v8>;
+ 	status = "okay";
+@@ -367,6 +1254,87 @@
+ 		};
+ 	};
+ 
++	dsi {
++		display_rst_l: display-rst-l {
++			rockchip,pins = <4 RK_PD1 RK_FUNC_GPIO &pcfg_pull_down>;
++		};
++
++		display_pwren: display-pwren {
++			rockchip,pins = <3 RK_PA1 RK_FUNC_GPIO &pcfg_pull_down>;
++		};
++
++		display_pwren1: display-pwren1 {
++			rockchip,pins = <3 RK_PA5 RK_FUNC_GPIO &pcfg_pull_down>;
++		};
++	};
++
++	camera {
++		wcam_rst: wcam-rst {
++			rockchip,pins = <1 RK_PA0 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		wcam_pdn: wcam-pdn {
++			rockchip,pins = <2 RK_PD4 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		ucam_rst: ucam-rst {
++			rockchip,pins = <1 RK_PA4 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		ucam_pdn: ucam-pdn {
++			rockchip,pins = <2 RK_PB4 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++
++	fusb302x {
++		fusb0_int: fusb0-int {
++			rockchip,pins = <1 RK_PA2 RK_FUNC_GPIO &pcfg_pull_up>;
++		};
++	};
++
++	leds {
++		red_led_pin: red-led-pin {
++			rockchip,pins = <4 RK_PD2 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		green_led_pin: green-led-pin {
++			rockchip,pins = <4 RK_PD5 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		blue_led_pin: blue-led-pin {
++			rockchip,pins = <4 RK_PD6 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		flash_pins: flash-pins {
++			rockchip,pins =
++				<1 RK_PA3 RK_FUNC_GPIO &pcfg_pull_none>,
++				<4 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++
++	modem {
++		vcc_4g_5v_en: vcc-4g-5v-en-pin {
++			rockchip,pins = <1 RK_PC7 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		vcc_4g_en: vcc-4g-en-pin {
++			rockchip,pins = <4 RK_PC7 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		modem_control_pins: modem-control-pins {
++			rockchip,pins =
++				<0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>,
++				<3 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>,
++				<3 RK_PA6 RK_FUNC_GPIO &pcfg_pull_none>,
++				<0 RK_PB5 RK_FUNC_GPIO &pcfg_pull_none>,
++				<0 RK_PB4 RK_FUNC_GPIO &pcfg_pull_none>,
++				<0 RK_PA1 RK_FUNC_GPIO &pcfg_pull_none>,
++				<0 RK_PA3 RK_FUNC_GPIO &pcfg_pull_none>,
++				<3 RK_PC0 RK_FUNC_GPIO &pcfg_pull_none>,
++				<3 RK_PC1 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++
+ 	pmic {
+ 		pmic_int_l: pmic-int-l {
+ 			rockchip,pins = <1 RK_PC5 RK_FUNC_GPIO &pcfg_pull_up>;
+@@ -381,6 +1349,12 @@
+ 		};
+ 	};
+ 
++	pogo {
++		pogo_int_pin: pogo-int {
++			rockchip,pins = <3 RK_PA0 RK_FUNC_GPIO &pcfg_pull_up>;
++		};
++	};
++
+ 	sdio-pwrseq {
+ 		wifi_enable_h_pin: wifi-enable-h-pin {
+ 			rockchip,pins = <0 RK_PB2 RK_FUNC_GPIO &pcfg_pull_none>;
+@@ -391,6 +1365,26 @@
+ 		vcc1v8_codec_en: vcc1v8-codec-en {
+ 			rockchip,pins = <3 RK_PA4 RK_FUNC_GPIO &pcfg_pull_down>;
+ 		};
++
++		hp_det: hp-det {
++			rockchip,pins = <4 RK_PD4 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		spk_en: spk-en {
++			rockchip,pins = <0 RK_PB3 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++
++	stk3311 {
++		stk3311_int: stk3311-int {
++			rockchip,pins = <4 RK_PD3 RK_FUNC_GPIO &pcfg_input_pull_up>;
++		};
++	};
++
++	usb-typec {
++		vcc5v0_typec_en: vcc5v0_typec_en {
++			rockchip,pins = <0 RK_PA6 RK_FUNC_GPIO &pcfg_pull_up>;
++		};
+ 	};
+ 
+ 	wireless-bluetooth {
+@@ -422,6 +1416,15 @@
+ 	status = "okay";
+ };
+ 
++&pwm0 {
++	status = "okay";
++};
++
++&saradc {
++	vref-supply = <&vcca1v8_s3>;
++	status = "okay";
++};
++
+ &sdmmc {
+ 	bus-width = <4>;
+ 	cap-sd-highspeed;
+@@ -442,12 +1445,73 @@
+ 	status = "okay";
+ };
+ 
++&spi1 {
++	status = "okay";
++
++	flash@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <10000000>;
++	};
++};
++
++&tcphy0 {
++	extcon = <&typec_extcon_bridge>;
++	status = "okay";
++};
++
++&tcphy0_dp {
++	port {
++		tcphy0_typec_dp: endpoint {
++			remote-endpoint = <&usbc_dp>;
++		};
++	};
++};
++
++&tcphy0_usb3 {
++	port {
++		tcphy0_typec_ss: endpoint {
++			remote-endpoint = <&usbc_ss>;
++		};
++	};
++};
++
+ &tsadc {
+ 	rockchip,hw-tshut-mode = <1>;
+ 	rockchip,hw-tshut-polarity = <1>;
+ 	status = "okay";
+ };
+ 
++&u2phy0 {
++	status = "okay";
++	extcon = <&typec_extcon_bridge>;
++	extcon,ignore-usb;
++
++	port {
++		u2phy0_typec_hs: endpoint {
++			remote-endpoint = <&usbc_hs>;
++		};
++	};
++};
++
++&u2phy0_otg {
++	status = "okay";
++};
++
++&u2phy0_host {
++	status = "okay";
++	phy-supply = <&vcc5v0_sys>;
++};
++
++&u2phy1 {
++	status = "okay";
++};
++
++&u2phy1_host {
++	status = "okay";
++	phy-supply = <&vcc5v0_sys>;
++};
++
+ &uart0 {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&uart0_xfer &uart0_cts &uart0_rts>;
+@@ -472,3 +1536,52 @@
+ &uart2 {
+ 	status = "okay";
+ };
++
++&usb_host0_ehci {
++	status = "okay";
++};
++
++&usb_host0_ohci {
++	status = "okay";
++};
++
++&usb_host1_ehci {
++	status = "okay";
++};
++
++&usb_host1_ohci {
++	status = "okay";
++};
++
++&usbdrd3_0 {
++	status = "okay";
++};
++
++&usbdrd_dwc3_0 {
++	dr_mode = "otg";
++	extcon = <&typec_extcon_bridge>;
++	snps,usb3-phy-reset-quirk;
++	status = "okay";
++};
++
++&vopb {
++	status = "okay";
++	assigned-clocks = <&cru DCLK_VOP0_DIV>, <&cru DCLK_VOP0>, <&cru ACLK_VOP0>, <&cru HCLK_VOP0>;
++	assigned-clock-rates = <0>, <0>, <400000000>, <100000000>;
++	assigned-clock-parents = <&cru PLL_GPLL>, <&cru DCLK_VOP0_DIV>;
++};
++
++&vopb_mmu {
++	status = "okay";
++};
++
++&vopl {
++	status = "okay";
++	assigned-clocks = <&cru DCLK_VOP1_DIV>, <&cru DCLK_VOP1>, <&cru ACLK_VOP1>, <&cru HCLK_VOP1>;
++	assigned-clock-rates = <0>, <0>, <400000000>, <100000000>;
++	assigned-clock-parents = <&cru PLL_GPLL>, <&cru DCLK_VOP1_DIV>;
++};
++
++&vopl_mmu {
++	status = "okay";
++};
+-- 
+2.39.2
+

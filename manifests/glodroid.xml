@@ -12,17 +12,17 @@
   <remove-project name="platform/external/drm_hwcomposer" />
 
   <project path="glodroid"                        remote="glodroid" name="glodroid_configuration.git" groups="glodroid" revision="refs/tags/basedir-v0.9.0" />
-  <project path="glodroid/configuration"          remote="glodroid" name="glodroid_configuration.git" groups="glodroid" revision="885ea1abc643468f040e8c398719a1fd6a5361bb" />
+  <project path="glodroid/configuration"          remote="glodroid" name="glodroid_configuration.git" groups="glodroid" revision="648ae9c8f885b3c9862c5e82e97fa983d090d167" />
 
   <project path="glodroid/apks"                   remote="glodroid" name="glodroid_external_apks.git" groups="glodroid" revision="refs/tags/apps-v0.8.2" />
 
   <!-- gpu+display components (vendor) -->
-  <project path="glodroid/vendor/minigbm"         remote="aosp" name="platform/external/minigbm"        groups="glodroid" revision="cf10ab71d8b75ba79fffe580326f0d88edfec323" />
+  <project path="glodroid/vendor/minigbm"         remote="aosp" name="platform/external/minigbm"        groups="glodroid" revision="84b3a09ef0e620c1b2ec19c7626c327e68a847bc" />
   <project path="glodroid/vendor/drm_hwcomposer"  remote="aosp" name="platform/external/drm_hwcomposer" groups="glodroid" revision="2bf68c374976d0a7a0e71c1843cbeae2a3210b74" />
-  <project path="glodroid/vendor/mesa3d"          remote="aosp" name="platform/external/mesa3d"         groups="glodroid" revision="refs/tags/upstream-mesa-23.1.3" />
+  <project path="glodroid/vendor/mesa3d"          remote="aosp" name="platform/external/mesa3d"         groups="glodroid" revision="refs/tags/upstream-mesa-23.1.5" />
 
   <!-- camera components (vendor) -->
-  <project path="glodroid/vendor/libcamera"                     remote="libcamera" name="libcamera.git"      groups="glodroid" revision="b9ecd85ed1fee2e9d715368b24592ad3009131d8" />
+  <project path="glodroid/vendor/libcamera"                     remote="libcamera" name="libcamera.git"      groups="glodroid" revision="960d0c1e19feaf310321c906e14bd5410c6be629" />
   <project path="glodroid/vendor/libcamera/subprojects/libyuv"  remote="glodroid"  name="glodroid_forks.git" groups="glodroid" revision="refs/tags/libyuv-v0.8.2" />
   <project path="glodroid/vendor/libcamera/subprojects/libyaml" remote="github"    name="yaml/libyaml.git"   groups="glodroid" revision="refs/tags/0.2.5" />
 
@@ -49,9 +49,9 @@
   <project path="glodroid/vendor/libudev-zero"    remote="glodroid" name="glodroid_forks.git" groups="glodroid" revision="refs/tags/libudev_zero-v0.8.2" />
 
   <!-- bootloader components (platform) -->
-  <project path="glodroid/bootloader/u-boot"         remote="github" name="u-boot/u-boot.git"  groups="glodroid" revision="020520bbc1ff4a542e014f0873c13b4543aea0ea" />
+  <project path="glodroid/bootloader/u-boot"         remote="github" name="u-boot/u-boot.git"  groups="glodroid" revision="refs/tags/v2023.07" />
   <project path="glodroid/bootloader/atf"            name="platform/external/arm-trusted-firmware" groups="glodroid" revision="a127b99d5a063c798d1c6d2e1d4791a630f78355" />
-  <project path="glodroid/bootloader/rockchip-rkbin" remote="github"  name="rockchip-linux/rkbin.git" groups="glodroid" revision="7d631e0d5b2d373b54d4533580d08fb9bd2eaad4" clone-depth="1" />
+  <project path="glodroid/bootloader/rockchip-rkbin" remote="github"  name="rockchip-linux/rkbin.git" groups="glodroid" revision="b4558da0860ca48bf1a571dd33ccba580b9abe23" clone-depth="1" />
 
   <!-- kernel/firmware components (platform) -->
   <project path="glodroid/kernel/mainline-6.3"    remote="aosp" name="kernel/common"  groups="glodroid" revision="457391b0380335d5e9a5babdec90ac53928b23b4" clone-depth="1" />

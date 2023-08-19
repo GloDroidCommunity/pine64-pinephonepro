@@ -1,0 +1,39 @@
+From d2db32057edc6b347bb35dd631c68ee64b0ca304 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Mon, 22 May 2023 23:31:15 +0200
+Subject: [PATCH 17/56] video: rockchip: dw_mipi_dsi: Fix best_rate calculation
+
+pllref_clk is unused after being retrieved. fin needs to be set
+to dsi->ref clock's rate for the following calculation to work.
+Otherwise fin is undefined, and calculation return bogus number
+based on undefined variable.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/video/rockchip/dw_mipi_dsi_rockchip.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+index 5e8db6bd2e6..6d8b1e6f541 100644
+--- a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
++++ b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+@@ -505,7 +505,6 @@ dw_mipi_dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
+ 	unsigned int _prediv, best_prediv;
+ 	unsigned long _fbdiv, best_fbdiv;
+ 	unsigned long min_delta = ULONG_MAX;
+-	unsigned int pllref_clk;
+ 
+ 	bpp = mipi_dsi_pixel_format_to_bpp(format);
+ 	if (bpp < 0) {
+@@ -537,7 +536,7 @@ dw_mipi_dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
+ 		return 0;
+ 	}
+ 
+-	pllref_clk = clk_get_rate(dsi->ref);
++	fin = clk_get_rate(dsi->ref);
+ 	fout = target_mbps * USEC_PER_SEC;
+ 
+ 	/* constraint: 5Mhz <= Fref / N <= 40MHz */
+-- 
+2.39.2
+

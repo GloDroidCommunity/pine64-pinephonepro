@@ -1,0 +1,28 @@
+From b3c3115410db331376531f1fd83682bcc31142a9 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Tue, 6 Sep 2022 00:14:11 +0200
+Subject: [PATCH 46/56] [HACK] spl: Speedup SPL FIT loading a bit
+
+Don't record loadables into DT. It's useless and slow.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ common/spl/spl_fit.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/common/spl/spl_fit.c b/common/spl/spl_fit.c
+index 730639f7562..2d841c4a3f5 100644
+--- a/common/spl/spl_fit.c
++++ b/common/spl/spl_fit.c
+@@ -466,6 +466,8 @@ static int spl_fit_record_loadable(const struct spl_fit_info *ctx, int index,
+ 	const char *name;
+ 	int node;
+ 
++	return 0;
++
+ 	if (CONFIG_IS_ENABLED(FIT_IMAGE_TINY))
+ 		return 0;
+ 
+-- 
+2.39.2
+

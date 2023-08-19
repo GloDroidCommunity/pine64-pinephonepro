@@ -1,0 +1,60 @@
+From fb050561e44570351755f6e5f867460b26d0a36e Mon Sep 17 00:00:00 2001
+From: Ziyuan Xu <xzy.xu@rock-chips.com>
+Date: Mon, 3 Apr 2023 13:44:46 +0300
+Subject: [PATCH 40/56] mmc: dw_mmc: reset controller after data error
+
+Per dw_mmc databook, it's recommended to reset the host controller if
+some data-related error occurred.
+Implement a reset mechanism.
+
+Signed-off-by: Ziyuan Xu <xzy.xu@rock-chips.com>
+Co-developed-by: Jason Zhu <jason.zhu@rock-chips.com>
+Signed-off-by: Jason Zhu <jason.zhu@rock-chips.com>
+[eugen.hristev@collabora.com: modified a bit the variables initialization]
+Signed-off-by: Eugen Hristev <eugen.hristev@collabora.com>
+Reviewed-by: Kever Yang <kever.yang@rock-chips.com>
+---
+ drivers/mmc/dw_mmc.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/mmc/dw_mmc.c b/drivers/mmc/dw_mmc.c
+index 20f64b9f3ad..609d550ae4b 100644
+--- a/drivers/mmc/dw_mmc.c
++++ b/drivers/mmc/dw_mmc.c
+@@ -138,7 +138,7 @@ static int dwmci_data_transfer(struct dwmci_host *host, struct mmc_data *data)
+ {
+ 	struct mmc *mmc = host->mmc;
+ 	int ret = 0;
+-	u32 timeout, mask, size, i, len = 0;
++	u32 timeout, reset_timeout = 100, status, ctrl, mask, size, i, len = 0;
+ 	u32 *buf = NULL;
+ 	ulong start = get_timer(0);
+ 	u32 fifo_depth = (((host->fifoth_val & RX_WMARK_MASK) >>
+@@ -159,6 +159,24 @@ static int dwmci_data_transfer(struct dwmci_host *host, struct mmc_data *data)
+ 		/* Error during data transfer. */
+ 		if (mask & (DWMCI_DATA_ERR | DWMCI_DATA_TOUT)) {
+ 			debug("%s: DATA ERROR!\n", __func__);
++
++			dwmci_wait_reset(host, DWMCI_RESET_ALL);
++			dwmci_writel(host, DWMCI_CMD, DWMCI_CMD_PRV_DAT_WAIT |
++				     DWMCI_CMD_UPD_CLK | DWMCI_CMD_START);
++
++			do {
++				status = dwmci_readl(host, DWMCI_CMD);
++				if (!reset_timeout--)
++					break;
++				udelay(100);
++			} while (status & DWMCI_CMD_START);
++
++			if (!host->fifo_mode) {
++				ctrl = dwmci_readl(host, DWMCI_BMOD);
++				ctrl |= DWMCI_BMOD_IDMAC_RESET;
++				dwmci_writel(host, DWMCI_BMOD, ctrl);
++			}
++
+ 			ret = -EINVAL;
+ 			break;
+ 		}
+-- 
+2.39.2
+

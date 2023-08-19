@@ -1,0 +1,347 @@
+From 46172e5f47059b1450a65eac0e28e6dbd410157a Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Wed, 5 Jul 2023 03:21:30 +0200
+Subject: [PATCH 37/56] cmd: tmenu: Add bootflow+extlinux support
+
+Automatically generate menu from bootflow and extlinux data.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ boot/bootmeth_extlinux.c |   2 +-
+ boot/pxe_utils.c         |   5 +
+ cmd/tmenu.c              | 286 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 292 insertions(+), 1 deletion(-)
+
+diff --git a/boot/bootmeth_extlinux.c b/boot/bootmeth_extlinux.c
+index 6b2b8400383..74a53848b34 100644
+--- a/boot/bootmeth_extlinux.c
++++ b/boot/bootmeth_extlinux.c
+@@ -35,7 +35,7 @@ static int extlinux_get_state_desc(struct udevice *dev, char *buf, int maxsize)
+ 	return 0;
+ }
+ 
+-static int extlinux_getfile(struct pxe_context *ctx, const char *file_path,
++int extlinux_getfile(struct pxe_context *ctx, const char *file_path,
+ 			    char *file_addr, ulong *sizep)
+ {
+ 	struct extlinux_info *info = ctx->userdata;
+diff --git a/boot/pxe_utils.c b/boot/pxe_utils.c
+index d13c47dd942..96fabd5ce3f 100644
+--- a/boot/pxe_utils.c
++++ b/boot/pxe_utils.c
+@@ -763,6 +763,11 @@ cleanup:
+ 	return 1;
+ }
+ 
++int pxe_label_boot(struct pxe_context *ctx, struct pxe_label *label)
++{
++	return label_boot(ctx, label);
++}
++
+ /** enum token_type - Tokens for the pxe file parser */
+ enum token_type {
+ 	T_EOL,
+diff --git a/cmd/tmenu.c b/cmd/tmenu.c
+index 2d0524be971..7f77e373b25 100644
+--- a/cmd/tmenu.c
++++ b/cmd/tmenu.c
+@@ -3,6 +3,8 @@
+  * Copyright (C) 2018 Ondrej Jirman <megous@megous.com>
+  */
+ #include <common.h>
++#include <bootflow.h>
++#include <bootstd.h>
+ #include <command.h>
+ #include <cli_hush.h>
+ #include <video.h>
+@@ -333,3 +335,287 @@ static int do_tmenu(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[
+ U_BOOT_CMD(tmenu, 30, 1, do_tmenu, "tmenu", "tmenu item1 [item2...] - show touch menu and wait for input");
+ U_BOOT_CMD(tmenu_render, 30, 1, do_tmenu_render, "tmenu_render", "tmenu_render item1 [item2...] - show touch menu");
+ U_BOOT_CMD(tmenu_input, 30, 1, do_tmenu_input, "tmenu_input", "tmenu_input item1 [item2...] - wait for touch menu input");
++
++#include <pxe_utils.h>
++#include <extlinux.h>
++#include <mapmem.h>
++#include <stdlib.h>
++#include <image.h>
++#include <splash.h>
++#include <sysreset.h>
++#include <video_console.h>
++
++int pxe_label_boot(struct pxe_context *ctx, struct pxe_label *label);
++
++int extlinux_getfile(struct pxe_context *ctx, const char *file_path,
++			    char *file_addr, ulong *sizep);
++
++enum {
++	ACTION_BOOT = 1,
++	ACTION_POWEROFF,
++	ACTION_CONSOLE,
++};
++
++struct tmenu_boot_item {
++	int id;
++	char* label;
++	struct bootflow *bflow;
++
++	struct pxe_context *pxe_ctx;
++	struct pxe_label *pxe_label;
++	int action;
++};
++
++static int do_tmenu_bootflow(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	struct udevice *vdev, *tdev, *cdev;
++	struct video_priv *vpriv;
++	struct touchpanel_touch touches[10];
++	int cmd_ret = CMD_RET_FAILURE;
++	int ret;
++
++	struct bootstd_priv *std;
++	ret = bootstd_get_priv(&std);
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	// how many items to reserve
++	int extra_items = 2;
++
++	struct tmenu_boot_item items[64] = {};
++	int n_items = 0;
++	int bmp_loaded = 0;
++
++	struct bootflow *bflow;
++	for (ret = bootflow_first_glob(&bflow); !ret; ret = bootflow_next_glob(&bflow)) {
++		if (bflow->state == BOOTFLOWST_READY) {
++			//printf("flow: (%s) %s - %s\n", dev_get_parent(bflow->dev)->name, bflow->os_name ? bflow->os_name : bflow->name, bflow->method->name);
++
++			if (!strcmp(bflow->method->name, "extlinux")) {
++				struct cmd_tbl *cmdtp = calloc(1, sizeof(*cmdtp));
++				struct extlinux_info *pxe_info = calloc(1, sizeof(*pxe_info));
++				struct pxe_context *ctx = calloc(1, sizeof(*ctx));
++
++				if (!ctx || !cmdtp ||!pxe_info)
++					continue;
++
++				ulong addr = map_to_sysmem(bflow->buf);
++				pxe_info->dev = bflow->method;
++				pxe_info->bflow = bflow;
++				int ret = pxe_setup_ctx(ctx, cmdtp, extlinux_getfile, pxe_info, true, bflow->fname, false);
++				if (ret)
++					continue;
++
++				struct pxe_menu *cfg = parse_pxefile(ctx, addr);
++				if (!cfg) {
++					printf("Error parsing config file\n");
++					continue;
++				}
++
++				if (cfg->bmp && !bmp_loaded && get_pxe_file(ctx, cfg->bmp, image_load_addr) == 1)
++					bmp_loaded = 1;
++
++				struct list_head *pos;
++				list_for_each(pos, &cfg->labels) {
++					struct pxe_label *label = list_entry(pos, struct pxe_label, list);
++					struct tmenu_boot_item *it = &items[n_items++];
++
++					//printf("label %s - %s %s\n", label->num, label->name, label->menu);
++
++					it->id = n_items;
++					it->label = label->menu ? label->menu : label->name;
++					it->bflow = bflow;
++					it->pxe_ctx = ctx;
++					it->pxe_label = label;
++					it->action = ACTION_BOOT;
++
++					if (n_items == (ARRAY_SIZE(items) - extra_items))
++						break;
++				}
++			} else {
++				struct tmenu_boot_item *it = &items[n_items++];
++
++				it->id = n_items;
++				it->label = strdup(bflow->os_name ? bflow->os_name : bflow->name);
++				it->bflow = bflow;
++				it->action = ACTION_BOOT;
++			}
++
++			if (n_items == (ARRAY_SIZE(items) - extra_items))
++				break;
++		}
++	}
++
++	struct tmenu_boot_item *it = &items[n_items++];
++
++	it->id = n_items;
++	it->label = "U-Boot Console";
++	it->action = ACTION_CONSOLE;
++
++	it = &items[n_items++];
++
++	it->id = n_items;
++	it->label = "Power off";
++	it->action = ACTION_POWEROFF;
++
++	ret = uclass_first_device_err(UCLASS_VIDEO, &vdev);
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	ret = uclass_first_device_err(UCLASS_TOUCHPANEL, &tdev);
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	vpriv = dev_get_uclass_priv(vdev);
++
++	if (vpriv->bpix != VIDEO_BPP32) {
++		printf("tmenu requires 32BPP video device\n");
++		return CMD_RET_FAILURE;
++	}
++
++        /* prep done, start doing the UI work */
++
++	env_set("stdout", "serial");
++	env_set("stderr", "serial");
++
++	if (bmp_loaded) {
++		video_clear(vdev);
++		bmp_display(image_load_addr, BMP_ALIGN_CENTER, BMP_ALIGN_CENTER);
++	}
++
++        struct painter p = {
++		.fb = vpriv->fb,
++		.fb_end = vpriv->fb + vpriv->fb_size,
++		.cur = vpriv->fb,
++		.line_length = vpriv->line_length,
++		.bpp = VNBYTES(vpriv->bpix),
++		.cols = vpriv->xsize,
++		.rows = vpriv->ysize,
++	};
++
++	// prepare ui_items and lay them out
++	struct ui_item ui_items[n_items];
++        int border = 40, max_total_h = min(700, vpriv->ysize - 2 * border);
++        int gap = 10;
++
++        int cols = 1;
++        while ((max_total_h - gap * (DIV_ROUND_UP(n_items, cols) - 1)) / DIV_ROUND_UP(n_items, cols) < 100)
++                cols++;
++        int rows = DIV_ROUND_UP(n_items, cols);
++
++        int item_h = (max_total_h - gap * (DIV_ROUND_UP(n_items, cols) - 1)) / rows;
++        int item_w = (vpriv->xsize - 2 * border - (cols - 1) * gap) / cols;
++
++        int top = vpriv->ysize - border - rows * (item_h + gap) - gap;
++
++        for (int idx = 0; idx < n_items; idx++) {
++                struct ui_item *i = ui_items + idx;
++
++                int col = idx % cols;
++                int row = idx / cols;
++
++                i->x = border + col * (gap + item_w);
++                i->y = top + row * (gap + item_h);
++                i->w = item_w;
++                i->h = item_h;
++                i->fill = 0xff755f10;
++                i->text_color = 0xffffffff;
++                i->id = idx;
++
++		snprintf(i->text, sizeof i->text, "%s", items[idx].label);
++
++		//printf("ui_item[%d] x=%d y=%d w=%d h=%d text=%s\n", idx, i->x, i->y, i->w, i->h, i->text);
++	}
++
++	int selected = -1;
++	int redraw = 1;
++
++	ret = touchpanel_start(tdev);
++	if (ret < 0) {
++		printf("Failed to start %s, err=%d\n", tdev->name, ret);
++		goto out_restore_console;
++	}
++
++next:
++	while (1) {
++		if (redraw) {
++			ui_draw(ui_items, n_items, &p);
++			video_sync(vdev, true);
++			redraw = 0;
++		}
++
++		// don't be too busy reading i2c
++		udelay(50 * 1000);
++
++		// handle input
++		ret = touchpanel_get_touches(tdev, touches, ARRAY_SIZE(touches));
++		if (ret < 0) {
++			printf("Failed to get touches from %s, err=%d\n", tdev->name, ret);
++			break;
++		}
++
++		/* find first matching tap down */
++		for (int idx = 0; idx < ret; idx++) {
++			int tx = touches[idx].x;
++			int ty = touches[idx].y;
++
++			struct ui_item* hit = ui_hit_find(ui_items, n_items, tx, ty);
++			if (hit) {
++				selected = hit->id;
++				hit->fill = 0xffb19019;
++				redraw = 1;
++				goto next;
++			}
++		}
++
++		if (selected != -1) {
++			struct tmenu_boot_item *it = &items[selected];
++
++			if (it->action == ACTION_CONSOLE) {
++				cmd_ret = CMD_RET_SUCCESS;
++				break;
++			}
++
++			else if (it->action == ACTION_POWEROFF) {
++				ret = sysreset_walk(SYSRESET_POWER_OFF);
++				if (ret == -EINPROGRESS)
++					mdelay(1000);
++				break;
++			}
++
++			if (bmp_loaded) {
++				video_clear(vdev);
++				bmp_display(image_load_addr, BMP_ALIGN_CENTER, BMP_ALIGN_CENTER);
++			}
++
++			std->cur_bootflow = it->bflow;
++
++			if (it->pxe_label) {
++				pxe_label_boot(it->pxe_ctx, it->pxe_label);
++			} else {
++				bootflow_boot(it->bflow);
++			}
++
++			selected = -1;
++			redraw = 1;
++			break;
++		}
++	}
++
++out_stop_touch:
++	ret = touchpanel_stop(tdev);
++	if (ret < 0)
++		printf("Failed to stop %s, err=%d\n", tdev->name, ret);
++
++out_restore_console:
++	//video_clear(vdev);
++	if (!uclass_first_device_err(UCLASS_VIDEO_CONSOLE, &cdev))
++		vidconsole_clear_and_reset(cdev);
++
++	env_set("stdout", "serial,vidconsole");
++	env_set("stderr", "serial,vidconsole");
++
++	return cmd_ret;
++}
++
++U_BOOT_CMD(tmenu_bootflow, 4, 1, do_tmenu_bootflow, "tmenu_bootflow", "tmenu_bootflow - show bootflow menu");
+-- 
+2.39.2
+

@@ -1,0 +1,205 @@
+From 4c7c24232fbd9c4fabd64a6a48112d399bf49196 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megous@megous.com>
+Date: Tue, 23 Oct 2018 16:55:36 +0200
+Subject: [PATCH 32/56] input: Implemented touchpanel uclass for touchpanel
+ devices
+
+Touchapnel devices are useful in u-boot for implementation of boot
+menu user interfaces on tablets and other touch based devices.
+
+This uclass implements start, stop and get_touches interface methods.
+
+Signed-off-by: Ondrej Jirman <megous@megous.com>
+---
+ drivers/input/Kconfig             |  9 +++++
+ drivers/input/Makefile            |  2 +
+ drivers/input/touchpanel-uclass.c | 67 +++++++++++++++++++++++++++++++
+ include/dm/uclass-id.h            |  1 +
+ include/touchpanel.h              | 61 ++++++++++++++++++++++++++++
+ 5 files changed, 140 insertions(+)
+ create mode 100644 drivers/input/touchpanel-uclass.c
+ create mode 100644 include/touchpanel.h
+
+diff --git a/drivers/input/Kconfig b/drivers/input/Kconfig
+index c2b365af11d..0df0325eb98 100644
+--- a/drivers/input/Kconfig
++++ b/drivers/input/Kconfig
+@@ -100,3 +100,12 @@ config TWL4030_INPUT
+ 	bool "Enable TWL4030 Input controller"
+ 	help
+ 	  Enable TWL4030 Input controller
++
++config DM_TOUCHPANEL
++	bool "Enable driver model for touchpanel support"
++	depends on DM
++	help
++	  This adds a uclass for touchpanel input and implements support
++	  using driver model. The API is implemented by touchpanel.h and
++	  includes methods to start/stop the device and check for available
++	  input.
+diff --git a/drivers/input/Makefile b/drivers/input/Makefile
+index 71f315adf6f..cbcfb92aded 100644
+--- a/drivers/input/Makefile
++++ b/drivers/input/Makefile
+@@ -14,4 +14,6 @@ obj-$(CONFIG_APPLE_SPI_KEYB) += apple_spi_kbd.o
+ obj-$(CONFIG_I8042_KEYB) += i8042.o
+ obj-$(CONFIG_TEGRA_KEYBOARD) += input.o tegra-kbc.o
+ obj-$(CONFIG_TWL4030_INPUT) += twl4030.o
++obj-$(CONFIG_DM_TOUCHPANEL) += touchpanel-uclass.o
++
+ endif
+diff --git a/drivers/input/touchpanel-uclass.c b/drivers/input/touchpanel-uclass.c
+new file mode 100644
+index 00000000000..bd1139f4232
+--- /dev/null
++++ b/drivers/input/touchpanel-uclass.c
+@@ -0,0 +1,67 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (c) 2018 Ondrej Jirman <megous@megous.com>
++ */
++
++#include <common.h>
++#include <errno.h>
++#include <dm.h>
++#include <dm/uclass-internal.h>
++#include <touchpanel.h>
++
++int touchpanel_start(struct udevice *dev)
++{
++	const struct touchpanel_ops *ops = touchpanel_get_ops(dev);
++
++	if (!ops || !ops->start)
++		return -ENOSYS;
++
++	return ops->start(dev);
++}
++
++int touchpanel_stop(struct udevice *dev)
++{
++	const struct touchpanel_ops *ops = touchpanel_get_ops(dev);
++
++	if (!ops || !ops->stop)
++		return -ENOSYS;
++
++	return ops->stop(dev);
++}
++
++int touchpanel_get_touches(struct udevice *dev,
++			   struct touchpanel_touch* touches, int max_touches)
++{
++	const struct touchpanel_ops *ops = touchpanel_get_ops(dev);
++
++	if (!ops || !ops->get_touches)
++		return -ENOSYS;
++
++	return ops->get_touches(dev, touches, max_touches);
++}
++
++static int touchpanel_pre_probe(struct udevice *dev)
++{
++	struct touchpanel_priv *uc_priv;
++
++	uc_priv = dev_get_uclass_priv(dev);
++	if (!uc_priv)
++		return -ENXIO;
++
++	uc_priv->size_x = dev_read_u32_default(dev, "touchscreen-size-x",
++						-ENODATA);
++	uc_priv->size_y = dev_read_u32_default(dev, "touchscreen-size-y",
++						-ENODATA);
++
++	if (uc_priv->size_x == -ENODATA || uc_priv->size_y == -ENODATA)
++		uc_priv->size_x = uc_priv->size_y = -ENODATA;
++
++	return 0;
++}
++
++UCLASS_DRIVER(touchpanel) = {
++	.id		= UCLASS_TOUCHPANEL,
++	.name		= "touchpanel",
++	.pre_probe	= touchpanel_pre_probe,
++	.per_device_auto = sizeof(struct touchpanel_priv),
++};
+diff --git a/include/dm/uclass-id.h b/include/dm/uclass-id.h
+index 307ad6931ca..d48b9a8ec4d 100644
+--- a/include/dm/uclass-id.h
++++ b/include/dm/uclass-id.h
+@@ -132,6 +132,7 @@ enum uclass_id {
+ 	UCLASS_TEE,		/* Trusted Execution Environment device */
+ 	UCLASS_THERMAL,		/* Thermal sensor */
+ 	UCLASS_TIMER,		/* Timer device */
++	UCLASS_TOUCHPANEL,	/* Touch panel driver */
+ 	UCLASS_TPM,		/* Trusted Platform Module TIS interface */
+ 	UCLASS_UFS,		/* Universal Flash Storage */
+ 	UCLASS_USB,		/* USB bus */
+diff --git a/include/touchpanel.h b/include/touchpanel.h
+new file mode 100644
+index 00000000000..f84cae7a5a8
+--- /dev/null
++++ b/include/touchpanel.h
+@@ -0,0 +1,61 @@
++#ifndef __TOUCHPANEL_H
++#define __TOUCHPANEL_H
++
++/**
++ * struct touchpanel_priv - information about a touchpanel, for the uclass
++ *
++ * @sdev:	stdio device
++ */
++struct touchpanel_priv {
++	int size_x;
++	int size_y;
++};
++
++struct touchpanel_touch {
++	int id;
++	int x;
++	int y;
++};
++
++/**
++ * struct touchpanel_ops - touchpanel device operations
++ */
++struct touchpanel_ops {
++	/**
++	 * start() - enable the touchpanel to be ready for use
++	 *
++	 * @dev:	Device to enable
++	 * @return 0 if OK, -ve on error
++	 */
++	int (*start)(struct udevice *dev);
++
++	/**
++	 * stop() - disable the touchpanel when no-longer needed
++	 *
++	 * @dev:	Device to disable
++	 * @return 0 if OK, -ve on error
++	 */
++	int (*stop)(struct udevice *dev);
++
++	/**
++	 * get_touches() - get list of active touches
++	 *
++	 * @dev:	Device to read from
++	 * @touches:	Array where to store touches. If NULL, the driver will
++	 *              only return number of touches available.
++	 * @max_touches:	Size of an touches array
++	 * @return -EAGAIN if no touch is available, otherwise number of touches
++	 * available.
++	 */
++	int (*get_touches)(struct udevice *dev,
++			   struct touchpanel_touch* touches, int max_touches);
++};
++
++#define touchpanel_get_ops(dev)	((struct touchpanel_ops *)(dev)->driver->ops)
++
++int touchpanel_start(struct udevice *dev);
++int touchpanel_stop(struct udevice *dev);
++int touchpanel_get_touches(struct udevice *dev,
++			   struct touchpanel_touch* touches, int max_touches);
++
++#endif /* __TOUCHPANEL_H */
+-- 
+2.39.2
+

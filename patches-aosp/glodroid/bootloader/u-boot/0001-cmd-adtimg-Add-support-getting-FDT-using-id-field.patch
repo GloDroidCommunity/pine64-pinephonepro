@@ -1,7 +1,7 @@
-From 21b504378ef8ffc607afbfa1c7d46b20ef86e2e4 Mon Sep 17 00:00:00 2001
+From 9e78966c5ec5dd8dbf4ca04e54930714b2b917a3 Mon Sep 17 00:00:00 2001
 From: Roman Stratiienko <r.stratiienko@gmail.com>
 Date: Mon, 17 Aug 2020 00:02:12 +0300
-Subject: [PATCH 1/6] cmd: adtimg: Add support getting FDT using 'id' field.
+Subject: [PATCH 01/56] cmd: adtimg: Add support getting FDT using 'id' field.
 
 Idea is based on:
 https://patchwork.ozlabs.org/cover/1202575/
@@ -14,7 +14,7 @@ Signed-off-by: Roman Stratiienko <r.stratiienko@gmail.com>
  3 files changed, 131 insertions(+)
 
 diff --git a/boot/image-android-dt.c b/boot/image-android-dt.c
-index fb014190d4..9c5bfe96c7 100644
+index fb014190d44..9c5bfe96c7d 100644
 --- a/boot/image-android-dt.c
 +++ b/boot/image-android-dt.c
 @@ -73,6 +73,49 @@ bool android_dt_get_fdt_by_index(ulong hdr_addr, u32 index, ulong *addr,
@@ -68,7 +68,7 @@ index fb014190d4..9c5bfe96c7 100644
  static void android_dt_print_fdt_info(const struct fdt_header *fdt)
  {
 diff --git a/cmd/adtimg.c b/cmd/adtimg.c
-index f4b5cbf35b..279d94ebb2 100644
+index f4b5cbf35b9..279d94ebb2f 100644
 --- a/cmd/adtimg.c
 +++ b/cmd/adtimg.c
 @@ -11,6 +11,7 @@
@@ -186,7 +186,7 @@ index f4b5cbf35b..279d94ebb2 100644
  	return CMD_RET_FAILURE;
  }
 diff --git a/include/image-android-dt.h b/include/image-android-dt.h
-index 9a3aa8fa30..69f28ddf9e 100644
+index 9a3aa8fa30f..69f28ddf9ec 100644
 --- a/include/image-android-dt.h
 +++ b/include/image-android-dt.h
 @@ -12,6 +12,8 @@
@@ -199,5 +199,5 @@ index 9a3aa8fa30..69f28ddf9e 100644
  #if !defined(CONFIG_SPL_BUILD)
  void android_dt_print_contents(ulong hdr_addr);
 -- 
-2.37.2
+2.39.2
 

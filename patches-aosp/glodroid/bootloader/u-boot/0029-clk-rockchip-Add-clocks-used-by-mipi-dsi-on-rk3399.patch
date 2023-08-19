@@ -1,0 +1,43 @@
+From 2c964b864f1ea23238466e60c6c757321d304ed8 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Mon, 22 May 2023 00:19:02 +0200
+Subject: [PATCH 29/56] clk: rockchip: Add clocks used by mipi-dsi on rk3399
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/clk/rockchip/clk_rk3399.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/clk/rockchip/clk_rk3399.c b/drivers/clk/rockchip/clk_rk3399.c
+index c342627478f..7f0184fbd76 100644
+--- a/drivers/clk/rockchip/clk_rk3399.c
++++ b/drivers/clk/rockchip/clk_rk3399.c
+@@ -1214,6 +1214,12 @@ static int rk3399_clk_enable(struct clk *clk)
+ 	case SCLK_PCIEPHY_REF:
+ 		rk_clrreg(&priv->cru->clksel_con[18], BIT(10));
+ 		break;
++	case SCLK_DPHY_TX0_CFG:
++		rk_clrreg(&priv->cru->clkgate_con[21], BIT(1));
++		break;
++	case PCLK_VIO_GRF:
++		rk_clrreg(&priv->cru->clkgate_con[29], BIT(12));
++		break;
+ 	default:
+ 		debug("%s: unsupported clk %ld\n", __func__, clk->id);
+ 		return -ENOENT;
+@@ -1308,6 +1314,12 @@ static int rk3399_clk_disable(struct clk *clk)
+ 	case SCLK_PCIEPHY_REF:
+ 		rk_clrreg(&priv->cru->clksel_con[18], BIT(10));
+ 		break;
++	case SCLK_DPHY_TX0_CFG:
++		rk_setreg(&priv->cru->clkgate_con[21], BIT(1));
++		break;
++	case PCLK_VIO_GRF:
++		rk_setreg(&priv->cru->clkgate_con[29], BIT(12));
++		break;
+ 	default:
+ 		debug("%s: unsupported clk %ld\n", __func__, clk->id);
+ 		return -ENOENT;
+-- 
+2.39.2
+

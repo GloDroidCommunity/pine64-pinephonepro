@@ -1,0 +1,33 @@
+From d3c4722aa5d93f3115bc3bc772bd8d1cae166275 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Mon, 22 May 2023 00:22:19 +0200
+Subject: [PATCH 30/56] video: rockchip: dw-mipi-dsi: Align clock rate
+ calculations with Linux
+
+Just to be on the same page
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/video/rockchip/dw_mipi_dsi_rockchip.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+index 9ec3a48bf2a..a7c3ee09e1d 100644
+--- a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
++++ b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+@@ -547,10 +547,10 @@ dw_mipi_dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
+ 		return bpp;
+ 	}
+ 
+-	mpclk = DIV_ROUND_UP(timings->pixelclock.typ, 1000);
++	mpclk = DIV_ROUND_UP(timings->pixelclock.typ, 1000000);
+ 	if (mpclk) {
+ 		/* take 1 / 0.9, since mbps must big than bandwidth of RGB */
+-		tmp = (mpclk * (bpp / lanes) * 10 / 9) / 1000;
++		tmp = (mpclk * (bpp / lanes) * 10 / 9);
+ 		if (tmp < max_mbps)
+ 			target_mbps = tmp;
+ 		else
+-- 
+2.39.2
+

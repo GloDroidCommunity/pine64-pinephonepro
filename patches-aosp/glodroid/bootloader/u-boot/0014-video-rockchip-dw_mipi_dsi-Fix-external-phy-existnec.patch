@@ -1,0 +1,51 @@
+From ba7770d91637b4cfe576baf9c79cd4b3b0ae824c Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sun, 21 May 2023 17:10:32 +0200
+Subject: [PATCH 14/56] video: rockchip: dw_mipi_dsi: Fix external phy
+ existnece check
+
+&priv->phy is always true. Compiler warns about this loudly.
+
+Use a propper check for phy device allocation. Without this fix
+using this driver with SoC that doesn't use external phy (eg. RK3399)
+doesn't work.
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ drivers/video/rockchip/dw_mipi_dsi_rockchip.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+index ca548a60b75..b1b5328595e 100644
+--- a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
++++ b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+@@ -344,7 +344,7 @@ static int dsi_phy_init(void *priv_data)
+ 	struct dw_rockchip_dsi_priv *dsi = dev_get_priv(dev);
+ 	int ret, i, vco;
+ 
+-	if (&dsi->phy) {
++	if (dsi->phy.dev) {
+ 		ret = generic_phy_configure(&dsi->phy, &dsi->phy_opts);
+ 		if (ret) {
+ 			dev_err(dsi->dsi_host,
+@@ -527,7 +527,7 @@ dw_mipi_dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
+ 	}
+ 
+ 	/* for external phy only the mipi_dphy_config is necessary */
+-	if (&dsi->phy) {
++	if (dsi->phy.dev) {
+ 		phy_mipi_dphy_get_default_config(timings->pixelclock.typ  * 10 / 8,
+ 						 bpp, lanes,
+ 						 &dsi->phy_opts);
+@@ -827,7 +827,7 @@ static int dw_mipi_dsi_rockchip_probe(struct udevice *dev)
+ 	}
+ 
+ 	/* Get a ref clock only if not using an external phy. */
+-	if (&priv->phy) {
++	if (priv->phy.dev) {
+ 		dev_dbg(dev, "setting priv->ref to NULL\n");
+ 		priv->ref = NULL;
+ 
+-- 
+2.39.2
+

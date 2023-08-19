@@ -1,0 +1,31 @@
+From 4f4c8b59aa0bdd73cbee6fb80b65bd52f14cf6ef Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Mon, 24 Jul 2023 02:11:40 +0200
+Subject: [PATCH 10/56] Import dt-bindings for LEDs from Linux 6.5
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ include/dt-bindings/leds/common.h | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/include/dt-bindings/leds/common.h b/include/dt-bindings/leds/common.h
+index 3be89a7c20a..9a0d33d027f 100644
+--- a/include/dt-bindings/leds/common.h
++++ b/include/dt-bindings/leds/common.h
+@@ -33,7 +33,12 @@
+ #define LED_COLOR_ID_MULTI	8	/* For multicolor LEDs */
+ #define LED_COLOR_ID_RGB	9	/* For multicolor LEDs that can do arbitrary color,
+ 					   so this would include RGBW and similar */
+-#define LED_COLOR_ID_MAX	10
++#define LED_COLOR_ID_PURPLE	10
++#define LED_COLOR_ID_ORANGE	11
++#define LED_COLOR_ID_PINK	12
++#define LED_COLOR_ID_CYAN	13
++#define LED_COLOR_ID_LIME	14
++#define LED_COLOR_ID_MAX	15
+ 
+ /* Standard LED functions */
+ /* Keyboard LEDs, usually it would be input4::capslock etc. */
+-- 
+2.39.2
+

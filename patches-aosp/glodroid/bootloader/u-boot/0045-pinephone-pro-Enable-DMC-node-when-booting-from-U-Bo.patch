@@ -1,0 +1,45 @@
+From 3d79e892b4c1c7bd0d5db222c148a15c17eb3c60 Mon Sep 17 00:00:00 2001
+From: Ondrej Jirman <megi@xff.cz>
+Date: Sat, 3 Jun 2023 03:28:20 +0200
+Subject: [PATCH 45/56] pinephone-pro: Enable DMC node when booting from U-Boot
+ using RK blobs
+
+Signed-off-by: Ondrej Jirman <megi@xff.cz>
+---
+ .../pinephone-pro-rk3399/pinephone-pro-rk3399.c  | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+index 3347ad6b70a..caa5ef6f387 100644
+--- a/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
++++ b/board/pine64/pinephone-pro-rk3399/pinephone-pro-rk3399.c
+@@ -7,6 +7,8 @@
+ #include <common.h>
+ #include <dm.h>
+ #include <init.h>
++#include <fdt_support.h>
++#include <linux/libfdt.h>
+ #include <syscon.h>
+ #include <asm/io.h>
+ #include <asm/arch-rockchip/clock.h>
+@@ -77,3 +79,17 @@ int misc_init_r(void)
+ 	return ret;
+ }
+ #endif
++
++#ifdef CONFIG_OF_BOARD_SETUP
++int ft_board_setup(void *blob, struct bd_info *bd)
++{
++#ifdef CONFIG_ROCKCHIP_EXTERNAL_TPL
++	int rc = fdt_find_and_setprop(blob, "/memory-controller",
++					"status", "okay", sizeof("okay"), 1);
++	if (rc)
++		printf("Unable to enable DMC err=%s\n", fdt_strerror(rc));
++#endif
++
++	return 0;
++}
++#endif
+-- 
+2.39.2
+
